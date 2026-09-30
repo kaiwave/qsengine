@@ -1,10 +1,7 @@
 # qsengine: High-Performance Qubit Simulator
 An end-to-end educational quantum computing platform consisting of:
-1. **`qcore`**: A blazingly fast state-vector simulator engine written in Rust, wrapped in an ergonomic Python API using **PyO3** and **maturin**.
-2. **Interactive Quantum Handbook**: A modern static site covering foundational quantum mechanics and practical circuit building.
-
----
-This is **very reasonable and a standard industry pattern**, not "cooked" at all. Modern tools like **PyO3** and **maturin** make compiling Rust into Python native extensions smooth and ergonomic. In fact, production libraries like Polars, Ruff, and Pydantic V2 use this exact architecture.
+1. **`qsengine`**: A blazingly fast state-vector simulator engine written in Rust, wrapped in an ergonomic Python API using **PyO3** and **maturin**.
+2. **[qsengine.kaiwave.dev](https://qsengine.kaiwave.dev)**: A modern site covering foundational quantum mechanics, practical circuit building, and usage of qsengine.
 
 ---
 
