@@ -1,84 +1,162 @@
-use num_complex::Complex;
+//! CPU backend: [`QuantumState`], a multithreaded state vector in `f64` precision.
+//!
+//! This is the reference implementation and the fallback when no GPU is
+//! available. Gate application is parallelised across CPU cores with Rayon.
 
-// Represent an $n$-qubit state as a complex vector of length $2^n$ (using `num-complex`)
-use num_complex::Complex;
+use crate::backend::QuantumBackend;
+use crate::gates::Gate;
+use crate::{MAX_QUBITS, QsError, Result};
+use num_complex::Complex64;
+use rayon::prelude::*;
 
+/// Minimum number of amplitude pairs handed to one Rayon task. Below this the
+/// cost of scheduling work on another thread outweighs the arithmetic, so small
+/// registers effectively run single-threaded.
+const MIN_PARALLEL_LEN: usize = 1 << 14;
+
+/// An `n`-qubit state stored as a complex vector of length `2^n`.
 #[derive(Debug, Clone)]
 pub struct QuantumState {
     pub num_qubits: usize,
-    pub amplitudes: Vec<Complex<f64>>,
+    /// `amplitudes[i]` is the amplitude of basis state `|i>` (see the bit-ordering
+    /// note in the crate docs). Public for teaching/inspection; keep it normalised.
+    pub amplitudes: Vec<Complex64>,
 }
 
 impl QuantumState {
-    /// Create a zero-state |0...0> for n qubits.
+    /// Create the all-zero state |0...0> for `num_qubits` qubits.
     ///
     /// For n qubits:
     /// - state length = 2^n
     /// - index 0 corresponds to |00...0>
     /// - amplitude at index 0 = 1 + 0i
     /// - all others = 0 + 0i
-    pub fn new(num_qubits: usize) -> Self {
-        let dim = 1usize << num_qubits;
-        let mut amplitudes = vec![Complex::new(0.0, 0.0); dim];
-        amplitudes[0] = Complex::new(1.0, 0.0);
-
-        Self {
-            num_qubits,
-            amplitudes,
+    pub fn new(num_qubits: usize) -> Result<Self> {
+        if num_qubits > MAX_QUBITS {
+            return Err(QsError::TooManyQubits { requested: num_qubits, max: MAX_QUBITS });
         }
+        let mut amplitudes = vec![Complex64::new(0.0, 0.0); 1 << num_qubits];
+        amplitudes[0] = Complex64::new(1.0, 0.0);
+        Ok(Self { num_qubits, amplitudes })
     }
 
-    /// Return the total dimension of the state space.
-    pub fn dimension(&self) -> usize {
-        self.amplitudes.len()
-    }
-
-    /// Return the probability of a basis state index.
-    ///
-    /// This is useful for measurement and debugging.
+    /// Probability of measuring basis state `index`, i.e. `|amplitude|^2`.
+    /// Panics if `index >= 2^n`, like normal slice indexing.
     pub fn probability_of_index(&self, index: usize) -> f64 {
-        let amp = self.amplitudes[index];
-        amp.norm_sqr()
-    }
-
-    /// Apply a single-qubit gate to a given qubit.
-    ///
-    /// This is the first “real” quantum operation you will implement.
-    /// It works by:
-    /// 1. iterating over computational basis states
-    /// 2. pairing states that differ on the target qubit
-    /// 3. applying a 2x2 unitary matrix to each pair
-    pub fn apply_single_qubit_gate(
-        &mut self,
-        qubit: usize,
-        gate: [[Complex<f64>; 2]; 2],
-    ) {
-        // Pseudocode:
-        // for each basis index i:
-        //   if bit at qubit is 0:
-        //      a = state[i]
-        //      b = state[i ^ (1 << qubit)]
-        //      state[i] = gate[0][0] * a + gate[0][1] * b
-        //      state[i ^ (1 << qubit)] = gate[1][0] * a + gate[1][1] * b
-        //
-        // This is the standard statevector gate application pattern.
-    }
-
-    /// Measure all qubits in the computational basis.
-    ///
-    /// For each basis state |b>:
-    /// - probability = |amplitude|^2
-    /// - choose outcome using weighted random sampling
-    /// - collapse post-measurement state to the chosen basis vector
-    pub fn measure(&mut self) -> usize {
-        // 1. compute probabilities
-        // 2. sample index with rand::distributions::WeightedIndex
-        // 3. collapse amplitudes
-        // 4. return measured basis-state index
-        0
+        self.amplitudes[index].norm_sqr()
     }
 }
 
-// Implement single-qubit gates ($X, Y, Z, H$) via direct state indexing or Kronecker products.
+impl QuantumBackend for QuantumState {
+    fn num_qubits(&self) -> usize {
+        self.num_qubits
+    }
 
-// Add controlled gates ($CNOT$, $CZ$) and a basic measurement function using weighted random sampling.
+    /// The core gate loop.
+    ///
+    /// The target qubit `t` splits the basis states into pairs `(i0, i1)` that differ
+    /// only in bit `t` (`i1 = i0 + 2^t`). Each pair is multiplied by the 2x2 gate:
+    ///
+    /// ```text
+    /// [a0']   [g00 g01] [a0]
+    /// [a1'] = [g10 g11] [a1]
+    /// ```
+    ///
+    /// The vector is laid out as consecutive blocks of `2 * 2^t` amplitudes; in each
+    /// block the first half holds the `i0` entries and the second half the matching
+    /// `i1` entries. Splitting each block in two gives Rust two disjoint `&mut`
+    /// slices, so the pairs can be updated in parallel with no `unsafe`.
+    fn apply_gate_kernel(&mut self, control_mask: usize, target: usize, gate: &Gate) {
+        let stride = 1usize << target;
+        let block = stride << 1;
+        let [[g00, g01], [g10, g11]] = *gate;
+
+        // Update one pair; skipped unless all control bits of i0 are set.
+        // (i0 has the target bit clear and the mask never contains the target,
+        // so testing i0 alone is enough.)
+        let update = |i0: usize, a0: &mut Complex64, a1: &mut Complex64| {
+            if i0 & control_mask == control_mask {
+                let (x0, x1) = (*a0, *a1);
+                *a0 = g00 * x0 + g01 * x1;
+                *a1 = g10 * x0 + g11 * x1;
+            }
+        };
+
+        if stride >= MIN_PARALLEL_LEN {
+            // High target qubit: few, large blocks. Parallelise inside each block.
+            for (b, chunk) in self.amplitudes.chunks_mut(block).enumerate() {
+                let base = b * block;
+                let (lo, hi) = chunk.split_at_mut(stride);
+                lo.par_iter_mut()
+                    .zip(hi.par_iter_mut())
+                    .enumerate()
+                    .with_min_len(MIN_PARALLEL_LEN)
+                    .for_each(|(j, (a0, a1))| update(base + j, a0, a1));
+            }
+        } else {
+            // Low target qubit: many small blocks. Parallelise across blocks.
+            self.amplitudes
+                .par_chunks_mut(block)
+                .enumerate()
+                .with_min_len((MIN_PARALLEL_LEN / stride).max(1))
+                .for_each(|(b, chunk)| {
+                    let base = b * block;
+                    let (lo, hi) = chunk.split_at_mut(stride);
+                    for (j, (a0, a1)) in lo.iter_mut().zip(hi).enumerate() {
+                        update(base + j, a0, a1);
+                    }
+                });
+        }
+    }
+
+    fn amplitudes(&self) -> Vec<Complex64> {
+        self.amplitudes.clone()
+    }
+
+    fn probabilities(&self) -> Vec<f64> {
+        // Override the default to skip the amplitude copy.
+        self.amplitudes.par_iter().map(|a| a.norm_sqr()).collect()
+    }
+
+    fn collapse_to(&mut self, index: usize) {
+        self.amplitudes.fill(Complex64::new(0.0, 0.0));
+        self.amplitudes[index] = Complex64::new(1.0, 0.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::conformance;
+
+    #[test]
+    fn passes_backend_conformance_suite() {
+        conformance::run_all(|n| Box::new(QuantumState::new(n).unwrap()) as Box<dyn QuantumBackend>, 1e-12);
+    }
+
+    #[test]
+    fn rejects_too_many_qubits() {
+        assert!(matches!(
+            QuantumState::new(MAX_QUBITS + 1),
+            Err(QsError::TooManyQubits { .. })
+        ));
+    }
+
+    #[test]
+    fn parallel_paths_match_on_large_register() {
+        // 16 qubits is above MIN_PARALLEL_LEN, so both kernel branches run.
+        let n = 16;
+        let mut s = QuantumState::new(n).unwrap();
+        for q in 0..n {
+            s.h(q).unwrap();
+        }
+        // H on every qubit = uniform superposition.
+        let expect = 1.0 / (1 << n) as f64;
+        assert!(s.probabilities().iter().all(|p| (p - expect).abs() < 1e-12));
+        // ...and H again returns to |0...0>.
+        for q in 0..n {
+            s.h(q).unwrap();
+        }
+        assert!((s.probability_of_index(0) - 1.0).abs() < 1e-9);
+    }
+}

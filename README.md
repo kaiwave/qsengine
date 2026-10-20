@@ -77,13 +77,18 @@ Simulating an $n$-qubit quantum system requires maintaining a state vector of le
 
 ```text
 .
-├── Cargo.toml               # Rust workspace / library manifest
-├── pyproject.toml           # Maturin build configuration
+├── Cargo.toml               # Rust library manifest (`gpu` feature on by default)
+├── pyproject.toml           # Maturin build configuration (weeks 3-4)
+├── docs/RUST_GUIDE.md       # Every Rust feature used in the engine, explained
 ├── src/                     # Rust backend
-│   ├── lib.rs               # PyO3 module registration
-│   ├── statevector.rs       # Complex-valued state vector operations
-│   ├── gates.rs             # Pauli, Hadamard, Phase, and 2-qubit gates
-│   └── circuit.rs           # Circuit IR & execution pipeline
+│   ├── lib.rs               # Crate root, errors, best_backend() (PyO3 registration later)
+│   ├── backend.rs           # QuantumBackend trait: shared API, measurement, conformance tests
+│   ├── engine.rs            # QuantumState: multithreaded CPU state vector (f64)
+│   ├── gpu.rs               # GpuQuantumState: portable GPU state vector via wgpu (f32)
+│   ├── shaders/apply_gate.wgsl  # GPU kernel for every (controlled) gate
+│   ├── gates.rs             # Pauli, Hadamard, S, T and rotation matrices
+│   ├── main.rs              # Demo + CPU/GPU benchmark
+│   └── circuit.rs           # Circuit IR & execution pipeline (weeks 3-4)
 ├── python/                  # High-level Python package wrapper
 │   └── qcore/
 │       ├── __init__.py
@@ -96,10 +101,11 @@ Simulating an $n$-qubit quantum system requires maintaining a state vector of le
 
 ## Features
 
-- [ ] **Full State-Vector Simulation**: Simulate systems up to ~20 qubits with minimal memory footprint.
+- [x] **Full State-Vector Simulation**: Simulate systems up to ~20 qubits with minimal memory footprint.
 - [ ] **Core Gate Set**:
   - **Single Qubit**: $X, Y, Z, H, S, T, R_x(\theta), R_y(\theta), R_z(\theta)$
   - **Multi Qubit**: $CX$ (CNOT), $CZ$, $SWAP$
-- [ ] **Measurement Engine**: Monte-Carlo shot sampling and exact state probability vector calculation.
-- [ ] **Multithreaded Gate Dispatch**: Parallelized matrix application across amplitude blocks via `rayon`.
+- [x] **Measurement Engine**: Monte-Carlo shot sampling and exact state probability vector calculation.
+- [x] **Multithreaded Gate Dispatch**: Parallelized matrix application across amplitude blocks via `rayon`.
+- [x] **Portable GPU Backend**: wgpu compute shaders (Vulkan / DX12 / Metal, any vendor). Falls back to CPU automatically when no GPU is present; disable entirely with `--no-default-features`.
 - [ ] **Accompanying Educational Site**: Clean, readable static guides explaining quantum mechanics from linear algebra up to full algorithms.
