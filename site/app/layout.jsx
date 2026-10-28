@@ -1,11 +1,19 @@
+import "katex/dist/katex.min.css";
 import "./globals.css";
 import Link from "next/link";
 import { SiteHeader } from "./components/Nav";
-import { REPO, PYPI, VERSION } from "./content";
+import { REPO, PYPI, SITE, VERSION } from "./content";
 
 export const metadata = {
   title: { default: "qsengine: quantum circuits in Python, run in Rust", template: "%s | qsengine" },
   description: "qsengine is a state-vector quantum simulator for Python with a Rust core that runs on any CPU or GPU.",
+  metadataBase: new URL(SITE),
+  openGraph: {
+    type: "website",
+    siteName: "qsengine",
+    title: "qsengine: quantum circuits in Python, run in Rust",
+    description: "A fast state-vector quantum simulator for Python, with documentation and guides from bra-ket notation to Deutsch-Jozsa.",
+  },
 };
 
 export default function RootLayout({ children }) {
@@ -23,7 +31,7 @@ export default function RootLayout({ children }) {
         <SiteHeader />
         {children}
         <footer className="foot">
-          <p>qsengine {VERSION}, MIT licence.</p>
+          <p>qsengine {VERSION} by <a href="https://kaiwave.dev">kaiwave</a>, MIT licence.</p>
           <ul>
             <li><Link href="/docs/">Documentation</Link></li>
             <li><a href={REPO}>Source on GitHub</a></li>

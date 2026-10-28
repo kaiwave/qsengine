@@ -11,7 +11,7 @@ export function SiteHeader() {
   const path = norm(usePathname());
   const links = [
     ["/docs/", "Documentation"],
-    ["/docs/getting-started/", "Getting started"],
+    ["/docs/learn/qubits/", "Quantum physics"],
     ["/docs/examples/", "Examples"],
     ["/docs/release-notes/", "Release notes"],
   ];

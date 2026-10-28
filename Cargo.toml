@@ -4,6 +4,11 @@ version = "1.0.0"
 edition = "2024"
 license = "MIT"
 description = "High-performance state-vector quantum simulator (CPU + portable GPU backends)"
+repository = "https://github.com/kaiwave/qsengine"
+homepage = "https://qsengine.kaiwave.dev"
+readme = "README.md"
+# Keep the source distribution to what builds the package: no website, benchmarks or tooling.
+exclude = ["site/", "benchmarks/", "docs/", "tests/", ".github/", ".agents/", ".aider-desk/", ".claude/", "data/", "skills/", "skills-lock.json", ".taste-skill/"]
 
 [lib]
 # `rlib` for Rust users and the demo binary; `cdylib` is the shared library

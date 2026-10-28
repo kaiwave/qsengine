@@ -6,20 +6,18 @@ export default function Home() {
   return (
     <main>
       <section className="intro">
-        <div className="intro__text">
-          <h1 className="intro__title">qsengine</h1>
-          <p className="intro__lead">
-            A state-vector quantum simulator for Python. You build circuits in Python; a Rust core runs them on every
-            CPU core or on any GPU, and hands back the counts.
-          </p>
-        </div>
+        <h1 className="intro__title">qsengine</h1>
+        <p className="intro__lead">
+          A state-vector quantum simulator for Python. You build circuits in Python; a Rust core runs them on every
+          CPU core or on any GPU, and hands back the counts.
+        </p>
         <div className="intro__install">
           <p>Install the latest release, {VERSION}:</p>
           <CodeBlock code="pip install qsengine" label="Copy the install command" />
-          <div className="intro__actions">
-            <Link className="button" href="/docs/getting-started/">Your first circuit</Link>
-            <Link href="/docs/">Read the documentation</Link>
-          </div>
+        </div>
+        <div className="intro__actions">
+          <Link className="button" href="/docs/getting-started/">Your first circuit</Link>
+          <Link href="/docs/">Read the documentation</Link>
         </div>
       </section>
 

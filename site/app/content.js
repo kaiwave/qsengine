@@ -4,6 +4,7 @@
 
 // From Cargo.toml, set in next.config.mjs.
 export const VERSION = process.env.QSENGINE_VERSION;
+export const SITE = "https://qsengine.kaiwave.dev";
 export const REPO = "https://github.com/kaiwave/qsengine";
 export const PYPI = "https://pypi.org/project/qsengine/";
 
@@ -14,6 +15,17 @@ export const DOCS = [
     items: [
       { href: "/docs/getting-started/", title: "Installation and first circuit", blurb: "Install the wheel, build a Bell state, read the counts." },
       { href: "/docs/examples/", title: "Examples", blurb: "Complete programs with their real output." },
+    ],
+  },
+  {
+    group: "Quantum physics",
+    items: [
+      { href: "/docs/learn/qubits/", title: "Qubits and bra-ket notation", blurb: "What a qubit is and how to write its state." },
+      { href: "/docs/learn/measurement/", title: "Measurement", blurb: "Amplitudes, probabilities, shots and phase." },
+      { href: "/docs/learn/bloch-sphere/", title: "The Bloch sphere", blurb: "One qubit as a point on a sphere; gates as rotations." },
+      { href: "/docs/learn/many-qubits/", title: "Many qubits", blurb: "Tensor products, 2ⁿ amplitudes and bit order." },
+      { href: "/docs/learn/entanglement/", title: "Entanglement", blurb: "Bell states, step by step, and why they cannot be split." },
+      { href: "/docs/learn/deutsch-jozsa/", title: "The Deutsch-Jozsa algorithm", blurb: "A whole quantum algorithm, built and run with qsengine." },
     ],
   },
   {
