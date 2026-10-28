@@ -1,8 +1,8 @@
 # The Rust Behind qsengine
 
-This guide covers every Rust language feature, standard-library function and crate function used in the qsengine engine. The most important ones come first: once you understand the first ten sections, you can read the whole engine. Each section explains what the item is, why the engine uses it, and its syntax, with a short example taken from the codebase.
+This guide covers every Rust language feature, standard-library function and crate function used in qsengine. The most important ones come first: once you understand the first ten sections, you can read the whole engine. Each section explains what the item is, why the engine uses it, and its syntax, with a short example taken from the codebase.
 
-Files referenced: `src/lib.rs`, `src/backend.rs`, `src/engine.rs`, `src/gates.rs`, `src/gpu.rs`, `src/shaders/apply_gate.wgsl`, `src/main.rs`.
+Files referenced: `src/lib.rs`, `src/backend.rs`, `src/engine.rs`, `src/gates.rs`, `src/gpu.rs`, `src/shaders/apply_gate.wgsl`, `src/circuit.rs`, `src/python.rs`, `src/main.rs`.
 
 ---
 
@@ -61,6 +61,16 @@ Files referenced: `src/lib.rs`, `src/backend.rs`, `src/engine.rs`, `src/gates.rs
 35. [Tests: `#[test]`, `assert!`, `assert_eq!`, `matches!`](#35-tests)
 36. [Doc comments: `///` and `//!`](#36-doc-comments)
 37. [`Instant` and `black_box` (benchmarking)](#37-instant-and-black_box)
+
+**Part 7: Python bindings (PyO3)**
+
+38. [`#[pyclass]` and `#[pymethods]`](#38-pyclass-and-pymethods)
+39. [`#[new]`, `#[getter]` and dunder methods](#39-new-getter-and-dunder-methods)
+40. [`PyResult` and converting errors with `From`](#40-pyresult-and-converting-errors-with-from)
+41. [`#[pyo3(signature = ...)]` and `Option<T>`](#41-pyo3signature--and-optiont)
+42. [`py.detach`: releasing the GIL](#42-pydetach-releasing-the-gil)
+43. [`#[pymodule]` and `Bound`](#43-pymodule-and-bound)
+44. [maturin, `cdylib` and abi3](#44-maturin-cdylib-and-abi3)
 
 ---
 
@@ -680,6 +690,118 @@ std::hint::black_box(state.probabilities());
 let ms = start.elapsed().as_secs_f64() * 1000.0;
 ```
 
+
+---
+
+# Part 7: Python bindings (PyO3)
+
+PyO3 is the bridge between Rust and Python. Its attributes generate the C-level glue that CPython expects, so a Rust struct shows up as an ordinary Python class. All of qsengine's bindings live in `src/python.rs`, which only translates arguments and results. The simulation itself stays in `circuit.rs` and the backends.
+
+## 38. `#[pyclass]` and `#[pymethods]`
+
+`#[pyclass]` turns a Rust struct into a Python class, and `name = "..."` sets the name Python sees. The struct keeps its fields private to Python: qsengine's `PyQuantumCircuit` just wraps the pure-Rust `QuantumCircuit`. That way the engine never depends on PyO3, and Rust users never pay for it.
+
+`#[pymethods]` on an `impl` block exposes every method in it to Python. `&self` methods are read-only calls and `&mut self` methods may modify the object; PyO3 enforces Rust's borrow rules at runtime. A pyclass must be `Send`, which is why the GPU backend uses a `Mutex` (section 27).
+
+```rust
+#[pyclass(name = "QuantumCircuit", module = "qsengine")]
+struct PyQuantumCircuit { inner: QuantumCircuit }
+
+#[pymethods]
+impl PyQuantumCircuit {
+    /// Hadamard on `qubit`.            <- becomes the Python docstring
+    fn h(&mut self, qubit: usize) -> PyResult<()> { Ok(self.inner.h(qubit)?) }
+}
+```
+
+Arguments convert automatically: a Python `int` becomes `usize` (a negative number raises `OverflowError`), a `float` becomes `f64` and a `str` becomes `&str`. Return values convert back: `Vec<f64>` → `list[float]`, `HashMap<String, usize>` → `dict[str, int]`, and `Complex64` → `complex` (thanks to PyO3's `num-complex` feature).
+
+## 39. `#[new]`, `#[getter]` and dunder methods
+
+`#[new]` marks the constructor, which Python calls as `QuantumCircuit(3)`. `#[getter]` exposes a method as a read-only property, so `qc.num_qubits` takes no parentheses. Methods named like Python's special methods are wired up automatically: `__len__` powers `len(qc)` and `__repr__` controls how the object prints.
+
+```rust
+#[new]
+fn new(num_qubits: usize) -> PyResult<Self> { ... }
+
+#[getter]
+fn num_qubits(&self) -> usize { ... }
+
+fn __len__(&self) -> usize { ... }
+fn __repr__(&self) -> String { ... }
+```
+
+## 40. `PyResult` and converting errors with `From`
+
+`PyResult<T>` is `Result<T, PyErr>`. Returning `Err` raises a Python exception. qsengine implements `From<QsError> for PyErr`, so the `?` operator converts engine errors automatically: input mistakes become `ValueError` and GPU failures become `RuntimeError`. The `From` trait is Rust's standard conversion hook, and `?` calls it whenever the error types differ.
+
+`PyValueError::new_err(msg)` builds an exception directly, which is how an unknown `backend=` name is reported.
+
+```rust
+impl From<QsError> for PyErr {
+    fn from(e: QsError) -> PyErr {
+        match e {
+            QsError::Gpu(_) => PyRuntimeError::new_err(e.to_string()),
+            _ => PyValueError::new_err(e.to_string()),
+        }
+    }
+}
+
+fn h(&mut self, qubit: usize) -> PyResult<()> { Ok(self.inner.h(qubit)?) }
+//                                                     `?` converts ^
+```
+
+## 41. `#[pyo3(signature = ...)]` and `Option<T>`
+
+Rust has no default arguments, but Python users expect them. `#[pyo3(signature = (...))]` declares each parameter's default value as Python sees it. `Option<T>` is Rust's "maybe a value" type: `Some(x)` or `None`. In a binding, an `Option` parameter accepts Python's `None`, so `seed: Option<u64>` means "an int, or None".
+
+`match` on an `Option` picks the behaviour: a seeded generator for reproducible runs, or OS randomness.
+
+```rust
+#[pyo3(signature = (shots = 1024, seed = None, backend = "auto"))]
+fn run(&self, py: Python<'_>, shots: usize, seed: Option<u64>, backend: &str) -> PyResult<...>
+
+let mut rng = match seed {
+    Some(s) => StdRng::seed_from_u64(s),
+    None => StdRng::from_os_rng(),
+};
+```
+
+## 42. `py.detach`: releasing the GIL
+
+CPython's Global Interpreter Lock (GIL) lets only one thread run Python code at a time. Holding it during a long simulation would freeze every other Python thread. `py.detach(closure)` releases the GIL, runs the closure (which must not touch Python objects) and takes the GIL back. Taking a `py: Python<'_>` parameter gives a method this token.
+
+The closure uses `move` so that it owns its data. The circuit is cloned first, because `self` belongs to Python and can't be sent across while detached. Cloning a list of small instructions is cheap compared with simulating `2^n` amplitudes.
+
+```rust
+let circuit = self.inner.clone();
+let counts = py.detach(move || circuit.run(shots, kind, &mut rng))?;
+```
+
+## 43. `#[pymodule]` and `Bound`
+
+`#[pymodule]` marks the function CPython calls on `import qsengine`. Its name must match the library name in `Cargo.toml`. It receives the new module as `&Bound<'_, PyModule>`. A `Bound<'py, T>` is a reference to a Python object that's valid while the GIL is held, and the `'py` lifetime is how PyO3 makes that a compile-time rule. `m.add_class` registers a class, and `m.add` sets a module attribute.
+
+```rust
+#[pymodule]
+fn qsengine(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PyQuantumCircuit>()?;
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;   // env! reads a build-time variable
+    Ok(())
+}
+```
+
+## 44. maturin, `cdylib` and abi3
+
+A Python extension is a shared library (`.pyd` on Windows, `.so` elsewhere). `crate-type = ["cdylib", "rlib"]` makes Cargo build both the shared library and the normal Rust library that the demo and the tests use. The bindings sit behind the `python` Cargo feature, so plain `cargo build` and `cargo test` don't need Python at all. maturin switches the feature on through `pyproject.toml`.
+
+PyO3's `abi3-py39` feature compiles against CPython's *stable ABI*, so one wheel works on Python 3.9, 3.10, ... 3.14 and later. That makes distribution much easier: one wheel per OS and CPU instead of one per Python version. `qsengine.pyi` is a type stub that maturin ships alongside the extension, giving IDEs autocomplete for a module that has no `.py` source.
+
+```bash
+maturin develop --release     # build and install into the active venv (for development)
+maturin build --release       # produce a wheel in target/wheels/ for distribution
+```
+
 ---
 
 ## Quick reference: commands
@@ -689,4 +811,6 @@ cargo run --release                        # Bell-state demo + CPU vs GPU benchm
 cargo test --release                       # all tests
 cargo build --release --no-default-features # CPU-only (no wgpu)
 cargo doc --open                           # browse the API docs
+maturin develop --release                  # build + install the Python module into the venv
+pytest                                     # Python tests (against NumPy)
 ```

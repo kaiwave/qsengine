@@ -5,9 +5,9 @@ edition = "2024"
 description = "High-performance state-vector quantum simulator (CPU + portable GPU backends)"
 
 [lib]
-# `rlib` for Rust users and the demo binary. When the PyO3 layer is added,
-# append "cdylib" here so maturin can build a Python extension module.
-crate-type = ["rlib"]
+# `rlib` for Rust users and the demo binary; `cdylib` is the shared library
+# maturin packages as the Python extension module.
+crate-type = ["cdylib", "rlib"]
 
 [features]
 # The GPU backend is on by default but optional: build with
@@ -15,6 +15,9 @@ crate-type = ["rlib"]
 # Even when compiled in, it is only used if a GPU adapter is found at runtime.
 default = ["gpu"]
 gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
+# Python bindings. Off for plain `cargo build/test`; maturin turns it on
+# (see [tool.maturin] in pyproject.toml).
+python = ["dep:pyo3"]
 
 [dependencies]
 num-complex = "0.4.6"
@@ -24,3 +27,6 @@ rayon = "1.10"
 wgpu = { version = "25", optional = true }
 pollster = { version = "0.4", optional = true }
 bytemuck = { version = "1", features = ["derive"], optional = true }
+# abi3-py39: one compiled wheel works on every CPython from 3.9 up.
+# num-complex: amplitudes convert straight to Python `complex`.
+pyo3 = { version = "0.30", features = ["abi3-py39", "num-complex"], optional = true }

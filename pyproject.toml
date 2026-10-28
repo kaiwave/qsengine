@@ -1,0 +1,22 @@
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "qsengine"
+description = "High-performance state-vector quantum simulator with a Rust core"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dynamic = ["version"]   # taken from Cargo.toml
+
+[project.optional-dependencies]
+test = ["pytest", "numpy"]
+
+[tool.maturin]
+# Build the Rust crate with its Python bindings (and the default GPU backend).
+features = ["python"]

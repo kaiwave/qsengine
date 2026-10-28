@@ -62,20 +62,7 @@ pub trait QuantumBackend {
         target: usize,
         gate: &Gate,
     ) -> Result<()> {
-        let n = self.num_qubits();
-        let check = |q: usize| {
-            if q < n { Ok(()) } else { Err(QsError::QubitOutOfRange { qubit: q, num_qubits: n }) }
-        };
-        check(target)?;
-        let mut mask = 0usize;
-        for &c in controls {
-            check(c)?;
-            let bit = 1 << c;
-            if c == target || mask & bit != 0 {
-                return Err(QsError::DuplicateQubit(c));
-            }
-            mask |= bit;
-        }
+        let mask = control_mask(self.num_qubits(), controls, target)?;
         self.apply_gate_kernel(mask, target, gate);
         Ok(())
     }
@@ -91,7 +78,7 @@ pub trait QuantumBackend {
     }
 
     // ---------------------------------------------------------------------
-    // Provided: named gates (these mirror the planned Python API: `.h(0)`, `.cx(0, 1)`)
+    // Provided: named gates (same names as the Python API: `.h(0)`, `.cx(0, 1)`)
     // ---------------------------------------------------------------------
 
     /// Pauli-X on `q`.
@@ -154,6 +141,28 @@ pub trait QuantumBackend {
         }
         counts
     }
+}
+
+/// Validate a gate's qubits and pack `controls` into a bit mask.
+///
+/// Fails if any qubit is `>= num_qubits`, or if a qubit appears twice (including
+/// a control equal to the target). Shared by backends and [`crate::QuantumCircuit`],
+/// so circuits are checked when built rather than when run.
+pub fn control_mask(num_qubits: usize, controls: &[usize], target: usize) -> Result<usize> {
+    let check = |q: usize| {
+        if q < num_qubits { Ok(()) } else { Err(QsError::QubitOutOfRange { qubit: q, num_qubits }) }
+    };
+    check(target)?;
+    let mut mask = 0usize;
+    for &c in controls {
+        check(c)?;
+        let bit = 1 << c;
+        if c == target || mask & bit != 0 {
+            return Err(QsError::DuplicateQubit(c));
+        }
+        mask |= bit;
+    }
+    Ok(mask)
 }
 
 /// Running sum of `probs`: `out[i] = probs[0] + ... + probs[i]`.

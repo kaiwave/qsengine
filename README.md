@@ -77,25 +77,49 @@ Simulating an $n$-qubit quantum system requires maintaining a state vector of le
 
 ```text
 .
-├── Cargo.toml               # Rust library manifest (`gpu` feature on by default)
-├── pyproject.toml           # Maturin build configuration (weeks 3-4)
+├── Cargo.toml               # Rust manifest (`gpu` feature on by default, `python` for maturin)
+├── pyproject.toml           # Maturin build configuration
+├── qsengine.pyi             # Python type stub (autocomplete + types in IDEs)
 ├── docs/RUST_GUIDE.md       # Every Rust feature used in the engine, explained
 ├── src/                     # Rust backend
-│   ├── lib.rs               # Crate root, errors, best_backend() (PyO3 registration later)
+│   ├── lib.rs               # Crate root, errors, BackendKind / best_backend()
 │   ├── backend.rs           # QuantumBackend trait: shared API, measurement, conformance tests
 │   ├── engine.rs            # QuantumState: multithreaded CPU state vector (f64)
 │   ├── gpu.rs               # GpuQuantumState: portable GPU state vector via wgpu (f32)
 │   ├── shaders/apply_gate.wgsl  # GPU kernel for every (controlled) gate
 │   ├── gates.rs             # Pauli, Hadamard, S, T and rotation matrices
-│   ├── main.rs              # Demo + CPU/GPU benchmark
-│   └── circuit.rs           # Circuit IR & execution pipeline (weeks 3-4)
-├── python/                  # High-level Python package wrapper
-│   └── qcore/
-│       ├── __init__.py
-│       └── visualization.py # State visualizers / bloch sphere helpers
-├── tests/                   # Python & Rust test suites
+│   ├── circuit.rs           # QuantumCircuit: record gates, then run on any backend
+│   ├── python.rs            # PyO3 bindings: qsengine.QuantumCircuit
+│   └── main.rs              # Demo + CPU/GPU benchmark
+├── tests/test_circuit.py    # pytest suite checked against a NumPy reference simulator
 └── README.md
 ```
+
+---
+
+## Python Quickstart
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate            # Windows  (macOS/Linux: source .venv/bin/activate)
+pip install maturin pytest numpy
+maturin develop --release          # compile the Rust core and install `qsengine` into the venv
+pytest                             # run the Python test suite
+```
+
+```python
+import qsengine
+
+qc = qsengine.QuantumCircuit(2)
+qc.h(0)
+qc.cx(0, 1)
+
+qc.run(shots=1000, seed=1)        # {'00': 513, '11': 487}   qubit 0 is the rightmost bit
+qc.statevector()                  # [(0.7071067811865476+0j), 0j, 0j, (0.7071067811865476+0j)]
+qc.probabilities(backend="cpu")   # backend: "auto" (default), "cpu" (f64) or "gpu" (f32)
+```
+
+`"auto"` uses the GPU for circuits of 16+ qubits when one is available, otherwise the CPU. Bad input (e.g. `qc.h(5)` on 2 qubits) raises `ValueError`; asking for `"gpu"` without one raises `RuntimeError`.
 
 ---
 
@@ -107,5 +131,6 @@ Simulating an $n$-qubit quantum system requires maintaining a state vector of le
   - **Multi Qubit**: $CX$ (CNOT), $CZ$, $SWAP$
 - [x] **Measurement Engine**: Monte-Carlo shot sampling and exact state probability vector calculation.
 - [x] **Multithreaded Gate Dispatch**: Parallelized matrix application across amplitude blocks via `rayon`.
+- [x] **Python API**: `qsengine.QuantumCircuit` via PyO3 + maturin; one abi3 wheel covers CPython 3.9+. The state stays in Rust and only results cross into Python.
 - [x] **Portable GPU Backend**: wgpu compute shaders (Vulkan / DX12 / Metal, any vendor). Falls back to CPU automatically when no GPU is present; disable entirely with `--no-default-features`.
 - [ ] **Accompanying Educational Site**: Clean, readable static guides explaining quantum mechanics from linear algebra up to full algorithms.

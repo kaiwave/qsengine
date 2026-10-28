@@ -421,3 +421,9 @@ FodyWeavers.xsd
 # Added by cargo
 
 /target
+
+# Python
+.venv/
+*.pyd
+*.so
+.pytest_cache/
