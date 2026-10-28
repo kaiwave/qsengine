@@ -427,3 +427,17 @@ FodyWeavers.xsd
 *.pyd
 *.so
 .pytest_cache/
+
+# Claude
+.claude
+.agents
+.aider-desk
+data/skills/
+skills/
+skills-lock.json
+
+# Site
+.taste-skill/
+site/node_modules/
+site/.next/
+site/out/

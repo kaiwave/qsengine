@@ -75,14 +75,50 @@ impl QuantumCircuit {
         self.add_gate(&[control], target, gates::Z)
     }
 
-    /// Apply every instruction to an existing backend, in order.
+    /// Apply every instruction to an existing backend, with single-qubit gate fusion.
+    ///
+    /// Each gate is one full pass over the `2^n` amplitudes, and at large `n` that
+    /// pass is limited by memory bandwidth, not arithmetic. So consecutive
+    /// single-qubit gates on the same qubit are multiplied into one 2x2 matrix first
+    /// (`H` then `RZ` becomes one gate), saving whole passes.
+    ///
+    /// This is exact because gates on *different* qubits commute. A qubit's
+    /// pending matrix only has to be applied before the next multi-qubit gate that
+    /// touches that qubit, or at the end.
     pub fn apply_to(&self, backend: &mut dyn QuantumBackend) -> Result<()> {
         if backend.num_qubits() != self.num_qubits {
             return Err(QsError::SizeMismatch { circuit: self.num_qubits, backend: backend.num_qubits() });
         }
+
+        // pending[q] = product of single-qubit gates on q not yet sent to the backend.
+        let mut pending: Vec<Option<Gate>> = vec![None; self.num_qubits];
+        // Instructions were validated in `add_gate`, so the unchecked kernel is safe to call.
+        let flush = |q: usize, backend: &mut dyn QuantumBackend, pending: &mut [Option<Gate>]| {
+            if let Some(g) = pending[q].take() {
+                backend.apply_gate_kernel(0, q, &g);
+            }
+        };
+
         for ins in &self.instructions {
-            // Already validated in `add_gate`, so call the unchecked kernel directly.
-            backend.apply_gate_kernel(ins.control_mask, ins.target, &ins.gate);
+            if ins.control_mask == 0 {
+                let slot = &mut pending[ins.target];
+                *slot = Some(match slot.take() {
+                    Some(earlier) => gates::matmul(&ins.gate, &earlier),
+                    None => ins.gate,
+                });
+            } else {
+                // Flush every qubit this gate touches: the target and each control bit.
+                flush(ins.target, backend, &mut pending);
+                let mut mask = ins.control_mask;
+                while mask != 0 {
+                    flush(mask.trailing_zeros() as usize, backend, &mut pending);
+                    mask &= mask - 1; // clear the lowest set bit
+                }
+                backend.apply_gate_kernel(ins.control_mask, ins.target, &ins.gate);
+            }
+        }
+        for q in 0..self.num_qubits {
+            flush(q, backend, &mut pending);
         }
         Ok(())
     }
@@ -119,20 +155,34 @@ mod tests {
     use rand::rngs::StdRng;
 
     #[test]
-    fn circuit_matches_direct_backend_calls() {
-        let mut qc = QuantumCircuit::new(3).unwrap();
-        qc.h(0).unwrap();
-        qc.cx(0, 1).unwrap();
-        qc.rz(2, 0.7).unwrap();
-        qc.cz(1, 2).unwrap();
+    fn fused_circuit_matches_gate_by_gate() {
+        // Long runs of single-qubit gates (fused) interleaved with controlled gates
+        // (which must flush the right qubits), including a two-control gate.
+        let mut qc = QuantumCircuit::new(4).unwrap();
+        let mut direct = QuantumState::new(4).unwrap();
+        for layer in 0..3 {
+            for q in 0..4 {
+                let theta = 0.3 * (q + layer) as f64;
+                qc.h(q).unwrap();
+                qc.t(q).unwrap();
+                qc.ry(q, theta).unwrap();
+                direct.h(q).unwrap();
+                direct.t(q).unwrap();
+                direct.ry(q, theta).unwrap();
+            }
+            qc.cx(0, 1).unwrap();
+            qc.cz(2, 3).unwrap();
+            qc.add_gate(&[1, 3], 0, gates::X).unwrap();
+            direct.cx(0, 1).unwrap();
+            direct.cz(2, 3).unwrap();
+            direct.apply_multi_controlled_gate(&[1, 3], 0, &gates::X).unwrap();
+            qc.s(2).unwrap();
+            direct.s(2).unwrap();
+        }
 
-        let mut direct = QuantumState::new(3).unwrap();
-        direct.h(0).unwrap();
-        direct.cx(0, 1).unwrap();
-        direct.rz(2, 0.7).unwrap();
-        direct.cz(1, 2).unwrap();
-
-        assert_eq!(qc.statevector(BackendKind::Cpu).unwrap(), direct.amplitudes);
+        let fused = qc.statevector(BackendKind::Cpu).unwrap();
+        let worst = fused.iter().zip(&direct.amplitudes).map(|(a, b)| (a - b).norm()).fold(0.0, f64::max);
+        assert!(worst < 1e-12, "fusion changed the result by {worst}");
     }
 
     #[test]

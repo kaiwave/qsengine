@@ -92,6 +92,7 @@ Simulating an $n$-qubit quantum system requires maintaining a state vector of le
 │   ├── python.rs            # PyO3 bindings: qsengine.QuantumCircuit
 │   └── main.rs              # Demo + CPU/GPU benchmark
 ├── tests/test_circuit.py    # pytest suite checked against a NumPy reference simulator
+├── benchmarks/benchmark.py  # qsengine vs pure Python vs Qiskit Aer -> results.csv + benchmark.png
 └── README.md
 ```
 
@@ -119,7 +120,33 @@ qc.statevector()                  # [(0.7071067811865476+0j), 0j, 0j, (0.7071067
 qc.probabilities(backend="cpu")   # backend: "auto" (default), "cpu" (f64) or "gpu" (f32)
 ```
 
-`"auto"` uses the GPU for circuits of 16+ qubits when one is available, otherwise the CPU. Bad input (e.g. `qc.h(5)` on 2 qubits) raises `ValueError`; asking for `"gpu"` without one raises `RuntimeError`.
+`"auto"` uses the GPU for circuits of 14+ qubits when one is available, otherwise the CPU. Bad input (e.g. `qc.h(5)` on 2 qubits) raises `ValueError`; asking for `"gpu"` without one raises `RuntimeError`.
+
+---
+
+## Performance
+
+![qsengine vs pure Python vs Qiskit Aer](benchmarks/benchmark.png)
+
+Each run simulates 5 layers of (H on every qubit → RZ on every qubit → CNOT chain), then samples 1000 shots. Times are the best of several runs on a Ryzen 5 5500 (6 cores) + Radeon RX 6600, Windows 10, Qiskit Aer 0.18.2.
+
+| Qubits | Pure Python | qsengine CPU | qsengine GPU | Qiskit Aer |
+|---:|---:|---:|---:|---:|
+| 6  | 2.2 ms   | **0.11 ms** | 1.3 ms   | 3.7 ms   |
+| 10 | 30 ms    | **0.30 ms** | 1.2 ms   | 5.8 ms   |
+| 14 | 740 ms   | 2.4 ms      | **1.3 ms** | 11.7 ms  |
+| 18 | 16.2 s   | 25 ms       | **4.9 ms** | 19 ms    |
+| 22 | –        | 1.03 s      | **70 ms**  | 367 ms   |
+
+* **Small circuits (≤ 13 qubits):** the CPU backend is 7–60x faster than Aer because there's almost no per-call overhead. It's also ~100x faster than pure Python at 10 qubits (and ~640x at 18).
+* **Large circuits (≥ 14 qubits):** the GPU backend is 3–9x faster than Aer. The CPU backend falls behind Aer above ~17 qubits, where Aer's more aggressive (multi-qubit) gate fusion and cache blocking pay off.
+* `backend="auto"` picks whichever is faster: CPU below 14 qubits, GPU from 14 when one is present.
+
+Reproduce (needs `pip install qiskit qiskit-aer matplotlib`; Aer is skipped if missing):
+
+```bash
+python benchmarks/benchmark.py --max-qubits 22
+```
 
 ---
 
@@ -130,7 +157,8 @@ qc.probabilities(backend="cpu")   # backend: "auto" (default), "cpu" (f64) or "g
   - **Single Qubit**: $X, Y, Z, H, S, T, R_x(\theta), R_y(\theta), R_z(\theta)$
   - **Multi Qubit**: $CX$ (CNOT), $CZ$, $SWAP$
 - [x] **Measurement Engine**: Monte-Carlo shot sampling and exact state probability vector calculation.
-- [x] **Multithreaded Gate Dispatch**: Parallelized matrix application across amplitude blocks via `rayon`.
+- [x] **Multithreaded Gate Dispatch**: Parallelized matrix application across amplitude blocks via `rayon`, plus single-qubit gate fusion so runs of gates cost one pass over memory.
+- [x] **Benchmarks**: Reproducible comparison against pure Python and Qiskit Aer up to 22 qubits (`benchmarks/`).
 - [x] **Python API**: `qsengine.QuantumCircuit` via PyO3 + maturin; one abi3 wheel covers CPython 3.9+. The state stays in Rust and only results cross into Python.
 - [x] **Portable GPU Backend**: wgpu compute shaders (Vulkan / DX12 / Metal, any vendor). Falls back to CPU automatically when no GPU is present; disable entirely with `--no-default-features`.
 - [ ] **Accompanying Educational Site**: Clean, readable static guides explaining quantum mechanics from linear algebra up to full algorithms.

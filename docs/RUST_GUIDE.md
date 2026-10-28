@@ -2,7 +2,7 @@
 
 This guide covers every Rust language feature, standard-library function and crate function used in qsengine. The most important ones come first: once you understand the first ten sections, you can read the whole engine. Each section explains what the item is, why the engine uses it, and its syntax, with a short example taken from the codebase.
 
-Files referenced: `src/lib.rs`, `src/backend.rs`, `src/engine.rs`, `src/gates.rs`, `src/gpu.rs`, `src/shaders/apply_gate.wgsl`, `src/circuit.rs`, `src/python.rs`, `src/main.rs`.
+Files referenced (plus `benchmarks/benchmark.py` for performance numbers): `src/lib.rs`, `src/backend.rs`, `src/engine.rs`, `src/gates.rs`, `src/gpu.rs`, `src/shaders/apply_gate.wgsl`, `src/circuit.rs`, `src/python.rs`, `src/main.rs`.
 
 ---
 
@@ -201,6 +201,17 @@ if i0 & control_mask == control_mask { ... } // are ALL control qubits |1>?
 
 **Control masks.** A mask is a number whose set bits mark the control qubits. CNOT with control 2 uses `mask = 0b100`. A basis state passes when `index & mask == mask`. With `mask = 0` every state passes, which gives an ordinary single-qubit gate, so one function covers both cases.
 
+**Iterating over the set bits of a mask.** Gate fusion (in `circuit.rs`) needs every control qubit of a gate. `trailing_zeros()` gives the index of the lowest set bit, and `mask &= mask - 1` clears that bit, so the loop visits each set bit exactly once.
+
+```rust
+let mut mask = ins.control_mask;          // e.g. 0b1010 -> visits qubits 1, then 3
+while mask != 0 {
+    let q = mask.trailing_zeros() as usize;
+    flush(q);
+    mask &= mask - 1;                     // clear the lowest set bit
+}
+```
+
 ## 7. Ownership, borrowing, `&` and `&mut`
 
 Every value in Rust has exactly one owner, and the value is freed when its owner goes out of scope. Other code can **borrow** it. Any number of shared borrows `&T` (read-only) are allowed, *or* exactly one mutable borrow `&mut T`, but never both at once. The compiler enforces this rule, and it's why the multithreaded code can't have data races.
@@ -310,6 +321,19 @@ match self {
 }
 
 if let Ok(gpu) = GpuQuantumState::new(n) { return Ok(Box::new(gpu)); }
+```
+
+**`Option<T>`** is the standard enum for "maybe a value": `Some(value)` or `None`. Gate fusion keeps one `Option<Gate>` per qubit: `None` means nothing is waiting, and `Some(g)` holds the product of that qubit's queued gates. `slot.take()` moves the value out and leaves `None` behind in one step, which is exactly "send the pending gate and clear the slot". `if let Some(g) = ...` runs code only when there's a value.
+
+```rust
+let mut pending: Vec<Option<Gate>> = vec![None; n];
+
+*slot = Some(match slot.take() {
+    Some(earlier) => gates::matmul(&ins.gate, &earlier),   // fuse: new · earlier
+    None => ins.gate,
+});
+
+if let Some(g) = pending[q].take() { backend.apply_gate_kernel(0, q, &g); }
 ```
 
 ## 13. Implementing `Display` and `Error`
@@ -449,6 +473,7 @@ self.amplitudes.clone()
 | `a.div_ceil(b)` | ⌈a / b⌉ | GPU workgroup count |
 | `a.next_multiple_of(b)` | round up to a multiple of b | uniform-buffer alignment |
 | `x.leading_zeros()` | number of leading 0 bits | `floor(log2(x)) = 63 - leading_zeros` |
+| `x.trailing_zeros()` | number of trailing 0 bits | index of the lowest set bit (section 6) |
 | `a.min(b)` / `a.max(b)` | smaller / larger | clamping |
 | `x as u32` | numeric cast | `usize` → GPU `u32` |
 | `size_of::<T>()` | bytes in type `T` | buffer sizes |

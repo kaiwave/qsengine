@@ -97,10 +97,13 @@ impl std::error::Error for QsError {}
 pub type Result<T> = std::result::Result<T, QsError>;
 
 /// Below this many qubits, [`BackendKind::Auto`] uses the CPU: the state is too
-/// small to amortise GPU launch and read-back latency.
+/// small to amortise GPU launch and read-back latency (~1 ms per run).
 ///
-/// shortcut: 16 is an estimate, not measured per machine; tune it from the weeks 5-6 benchmarks.
-pub const GPU_MIN_QUBITS: usize = 16;
+/// Measured with `benchmarks/benchmark.py` (Ryzen 5 5500 + Radeon RX 6600): the
+/// GPU first wins at 14 qubits. At a tie the CPU is preferred for its f64 precision.
+///
+/// shortcut: one machine's crossover; a per-machine calibration could replace it if users report slow small circuits.
+pub const GPU_MIN_QUBITS: usize = 14;
 
 /// Which simulator to run on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

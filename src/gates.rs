@@ -69,6 +69,18 @@ pub fn rz(theta: f64) -> Gate {
     [[c(co, -s), O], [O, c(co, s)]]
 }
 
+/// Matrix product `a · b`: the single gate equivalent to applying `b` first, then `a`.
+/// Used by [`crate::QuantumCircuit`] to fuse runs of gates into one pass over the state.
+pub fn matmul(a: &Gate, b: &Gate) -> Gate {
+    let mut out = [[O; 2]; 2];
+    for (r, row) in out.iter_mut().enumerate() {
+        for (col, cell) in row.iter_mut().enumerate() {
+            *cell = a[r][0] * b[0][col] + a[r][1] * b[1][col];
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
