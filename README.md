@@ -1,108 +1,144 @@
-# qsengine: High-Performance Qubit Simulator
-An end-to-end educational quantum computing platform consisting of:
-1. **`qcore`**: A blazingly fast state-vector simulator engine written in Rust, wrapped in an ergonomic Python API using **PyO3** and **maturin**.
-2. **Interactive Quantum Handbook**: A modern static site covering foundational quantum mechanics and practical circuit building.
+# qsengine
+
+A state-vector quantum simulator for Python. You build circuits in Python; a Rust core runs them on every CPU core or on any GPU, and hands back the results.
+
+```bash
+pip install qsengine
+```
+
+```python
+import qsengine
+
+qc = qsengine.QuantumCircuit(2)
+qc.h(0)
+qc.cx(0, 1)
+
+print(qc.run(shots=1000, seed=1))   # {'00': 513, '11': 487}
+```
+
+**Documentation and guides:** [qsengine.kaiwave.dev](https://qsengine.kaiwave.dev)
 
 ---
-This is **very reasonable and a standard industry pattern**, not "cooked" at all. Modern tools like **PyO3** and **maturin** make compiling Rust into Python native extensions smooth and ergonomic. In fact, production libraries like Polars, Ruff, and Pydantic V2 use this exact architecture.
 
----
+## Why qsengine
 
-### Project Scope Breakdown
+- **Fast where it counts.** Small circuits run on the CPU with almost no per-call overhead; from 14 qubits up, the GPU takes over. On a 22-qubit benchmark qsengine's GPU backend is about 5 times faster than Qiskit Aer.
+- **Any GPU, nothing to install.** The GPU backend uses [wgpu](https://wgpu.rs), so it runs on NVIDIA, AMD, Intel and Apple GPUs through Vulkan, DirectX 12 or Metal. No CUDA, no vendor toolkit.
+- **Works everywhere.** Without a usable GPU the same code runs on the CPU, in full 64-bit precision.
+- **Small, plain API.** One class, eleven gates, three ways to get a result. Mistakes raise a normal Python `ValueError` on the line that made them.
+- **Built to learn with.** The website walks from bra-ket notation to a complete Deutsch-Jozsa run, and every example on it is real qsengine output.
 
-| Component | Difficulty | Tech Stack | Notes |
+## Install
+
+```bash
+pip install qsengine
+```
+
+One wheel per platform covers CPython 3.9 and newer on Windows, macOS and Linux. A GPU is optional.
+
+## Using it
+
+A circuit has a fixed number of qubits, all starting in |0⟩. Gate methods record gates; nothing runs until you ask for a result.
+
+```python
+import qsengine
+
+qc = qsengine.QuantumCircuit(3)
+qc.h(0)
+qc.cx(0, 1)
+qc.cx(1, 2)
+
+qc.run(shots=1000)          # measurement counts: {'000': ..., '111': ...}
+qc.probabilities()          # exact probabilities of all 8 basis states
+qc.statevector()            # exact complex amplitudes
+```
+
+| Gates | Methods |
+| --- | --- |
+| Single qubit | `x`, `y`, `z`, `h`, `s`, `t` |
+| Rotations (radians) | `rx(q, theta)`, `ry(q, theta)`, `rz(q, theta)` |
+| Two qubit | `cx(control, target)`, `cz(control, target)` |
+
+Bitstrings put **qubit 0 on the right**, the same convention as Qiskit. Pass `seed` to `run()` for repeatable counts.
+
+### Choosing a backend
+
+Every method that runs a circuit takes `backend="auto"` (the default), `"cpu"` or `"gpu"`.
+
+| | CPU | GPU | auto |
 | --- | --- | --- | --- |
-| **Rust Core** | Medium | `nalgebra` or `ndarray` + Rayon | State vector simulation (tensor products, matrix multiplication) |
-| **Python Bindings** | Low–Medium | `pyo3` + `maturin` | Expose circuit builder and gate applications |
-| **Static Site** | Low | VitePress, Astro, or Docusaurus | Explains qubits, superposition, Bloch sphere, basic gates |
+| Precision | 64-bit | 32-bit (within 1e-5 of the CPU) | 64-bit below 14 qubits, 32-bit from 14 |
+| Runs on | every CPU core | any NVIDIA, AMD, Intel or Apple GPU | whichever is faster |
+| Without a GPU | works | raises `RuntimeError` | falls back to the CPU |
 
----
+The full API, every error message and a guide to each topic are in the [documentation](https://qsengine.kaiwave.dev/docs/).
 
-### Recommended 8-Week Timeline
+## Performance
 
-**Weeks 1–2: State Vector Engine in Rust**
+Each run simulates 5 layers of (H on every qubit, RZ on every qubit, CNOT chain) and samples 1000 shots. Best of several runs on a Ryzen 5 5500 with a Radeon RX 6600, Windows 10, Qiskit Aer 0.18.2.
 
-* Represent an $n$-qubit state as a complex vector of length $2^n$ (using `num-complex`).
-* Implement single-qubit gates ($X, Y, Z, H$) via direct state indexing or Kronecker products.
-* Add controlled gates ($CNOT$, $CZ$) and a basic measurement function using weighted random sampling.
+![qsengine against pure Python and Qiskit Aer](https://raw.githubusercontent.com/kaiwave/qsengine/main/benchmarks/benchmark.png)
 
-**Weeks 3–4: Python Layer via PyO3**
+| Qubits | Pure Python | qsengine CPU | qsengine GPU | Qiskit Aer |
+| ---: | ---: | ---: | ---: | ---: |
+| 6 | 2.2 ms | **0.11 ms** | 1.3 ms | 3.7 ms |
+| 10 | 30 ms | **0.30 ms** | 1.2 ms | 5.8 ms |
+| 14 | 740 ms | 2.4 ms | **1.3 ms** | 11.7 ms |
+| 18 | 16.2 s | 25 ms | **4.9 ms** | 19 ms |
+| 22 | not run | 1.03 s | **70 ms** | 367 ms |
 
-* Initialize your workspace using `maturin new --binding pyo3`.
-* Wrap a `QuantumCircuit` struct in Rust and expose methods like `.h(target)`, `.cx(control, target)`, and `.run()` to Python.
-* Write unit tests in `pytest` to compare your simulation outputs against small NumPy calculations.
+Below 14 qubits the CPU backend is 7 to 60 times faster than Aer; from 14 qubits the GPU backend is 3 to 9 times faster. Above about 17 qubits the CPU backend is slower than Aer, which fuses multi-qubit gates. These are one machine's numbers: reproduce them with [`benchmarks/benchmark.py`](benchmarks/benchmark.py).
 
-**Weeks 5–6: Performance & Benchmarking**
+## Limitations
 
-* Add multithreading to gate operations with **Rayon**.
-* Benchmark execution times up to ~20 qubits against pure Python and basic Qiskit Aer to generate compelling performance plots.
+Version 1.0 measures every qubit at the end of the circuit. There is no SWAP gate and no mid-circuit measurement yet, so algorithms such as teleportation that branch on a measurement are not possible. A register holds at most 30 qubits (16 GiB of memory).
 
-**Weeks 7–8: Static Documentation Site**
+## Building from source
 
-* Use a doc generator with native KaTeX/MathJax support (like **VitePress** or **Starlight**).
-* Cover foundational concepts: bra-ket notation, superposition, entanglement, and walk through an example algorithm (e.g., Deutsch-Jozsa or Quantum Teleportation) using your custom Python library.
+You need a recent Rust toolchain (tested with 1.88) and Python 3.9 or newer.
 
-### Potential Traps to Avoid
-
-* **Exponential Memory Wall ($2^n$):** State vector memory scales as $2^n \times 16\text{ bytes}$. An 18-qubit simulation takes ~4 MB of RAM, 24 qubits takes ~256 MB, and 30 qubits demands ~16 GB. Cap your simulator's scope around 15–20 qubits before considering sparse matrices or stabilizer states.
-* **FFI Boundary Overhead:** Avoid passing state vectors across the Rust-Python boundary on every single gate application. Keep the state entirely in Rust memory and only return counts or measurement bitstrings back to Python when `.measure()` or `.run()` finishes.
-* 
----
-
-## Architecture Overview
-
-```
-                      +-----------------------------+
-                      |       Python Client         |
-                      | (API / Circuit Construction)|
-                      +--------------+--------------+
-                                     |
-                                     | PyO3 Bindings
-                                     v
-                      +-----------------------------+
-                      |         Rust Core           |
-                      |  - State Vector ($2^n$)      |
-                      |  - Matrix Math & Rayon      |
-                      |  - Non-destructive sampling |
-                      +-----------------------------+
+```bash
+git clone https://github.com/kaiwave/qsengine
+cd qsengine
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install maturin pytest numpy
+maturin develop --release       # build and install into the venv
 ```
 
-### Why Rust + Python?
-Simulating an $n$-qubit quantum system requires maintaining a state vector of length $2^n$ with double-precision complex amplitudes ($\approx 16 \times 2^n$ bytes). Applying quantum gates translates to dense matrix multiplications and index shuffling.
+Tests:
 
-* **Python** provides the approachable, interactive syntax familiar to researchers and students.
-* **Rust** provides zero-cost abstractions, predictable memory usage, SIMD auto-vectorization, and data-race-free multithreading with `rayon`.
-* **Zero FFI Boundary Penalty**: Circuits are constructed and fully executed in Rust memory. Complex state vectors are never serialized across the boundary on every gate—only final measurement results and expectation values are returned to Python.
+```bash
+cargo test --release            # Rust tests (GPU tests skip without a GPU)
+pytest                          # Python tests, checked against a NumPy reference
+```
 
----
+To build without the GPU backend, use `cargo build --no-default-features` for Rust.
 
-## Repository Structure
+The website lives in `site/` (Next.js, static export, maths rendered with KaTeX at build time):
+
+```bash
+cd site
+npm install
+npm run dev                     # local preview
+npm run build                   # static site in site/out/
+```
+
+## Project layout
 
 ```text
-.
-├── Cargo.toml               # Rust workspace / library manifest
-├── pyproject.toml           # Maturin build configuration
-├── src/                     # Rust backend
-│   ├── lib.rs               # PyO3 module registration
-│   ├── statevector.rs       # Complex-valued state vector operations
-│   ├── gates.rs             # Pauli, Hadamard, Phase, and 2-qubit gates
-│   └── circuit.rs           # Circuit IR & execution pipeline
-├── python/                  # High-level Python package wrapper
-│   └── qcore/
-│       ├── __init__.py
-│       └── visualization.py # State visualizers / bloch sphere helpers
-├── tests/                   # Python & Rust test suites
-└── README.md
+src/                Rust core and Python bindings
+  engine.rs           CPU backend (64-bit, multithreaded with Rayon)
+  gpu.rs              GPU backend (wgpu compute shader in shaders/)
+  circuit.rs          QuantumCircuit: records gates, fuses them, runs them
+  python.rs           PyO3 bindings for the qsengine Python module
+qsengine.pyi        Type hints for editors
+tests/              Python tests against NumPy
+benchmarks/         Benchmark script, results and plot
+site/               Documentation and learning website
+docs/RUST_GUIDE.md  A guide to every Rust feature the engine uses
 ```
 
----
+## Licence
 
-## Features
-
-- [ ] **Full State-Vector Simulation**: Simulate systems up to ~20 qubits with minimal memory footprint.
-- [ ] **Core Gate Set**:
-  - **Single Qubit**: $X, Y, Z, H, S, T, R_x(\theta), R_y(\theta), R_z(\theta)$
-  - **Multi Qubit**: $CX$ (CNOT), $CZ$, $SWAP$
-- [ ] **Measurement Engine**: Monte-Carlo shot sampling and exact state probability vector calculation.
-- [ ] **Multithreaded Gate Dispatch**: Parallelized matrix application across amplitude blocks via `rayon`.
-- [ ] **Accompanying Educational Site**: Clean, readable static guides explaining quantum mechanics from linear algebra up to full algorithms.
+MIT, see [LICENSE](LICENSE). Made by [kaiwave](https://kaiwave.dev).
