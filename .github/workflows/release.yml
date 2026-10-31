@@ -41,8 +41,9 @@ jobs:
       - name: Test the wheel
         if: matrix.target == 'x86_64'
         run: |
-          pip install qsengine --no-index --find-links dist --force-reinstall
+          # numpy first: --no-index (which makes sure we test this wheel, not PyPI's) can't fetch dependencies.
           pip install pytest numpy
+          pip install qsengine --no-index --find-links dist --force-reinstall
           pytest
 
   windows:
@@ -65,8 +66,9 @@ jobs:
       - name: Test the wheel
         shell: bash
         run: |
-          pip install qsengine --no-index --find-links dist --force-reinstall
+          # numpy first: --no-index (which makes sure we test this wheel, not PyPI's) can't fetch dependencies.
           pip install pytest numpy
+          pip install qsengine --no-index --find-links dist --force-reinstall
           pytest
 
   macos:
@@ -94,8 +96,9 @@ jobs:
           path: dist
       - name: Test the wheel
         run: |
-          pip install qsengine --no-index --find-links dist --force-reinstall
+          # numpy first: --no-index (which makes sure we test this wheel, not PyPI's) can't fetch dependencies.
           pip install pytest numpy
+          pip install qsengine --no-index --find-links dist --force-reinstall
           pytest
 
   sdist:
