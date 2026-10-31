@@ -11,6 +11,7 @@
 
 use crate::{BackendKind, QsError, QuantumCircuit, format_bitstring};
 use num_complex::Complex64;
+use numpy::{PyArray1, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use rand::SeedableRng;
@@ -93,6 +94,39 @@ impl PyQuantumCircuit {
     fn cx(&mut self, control: usize, target: usize) -> PyResult<()> { Ok(self.inner.cx(control, target)?) }
     /// Controlled-Z: flip the phase of |11> on `control`, `target`.
     fn cz(&mut self, control: usize, target: usize) -> PyResult<()> { Ok(self.inner.cz(control, target)?) }
+    /// S-dagger (inverse of S) on `qubit`.
+    fn sdg(&mut self, qubit: usize) -> PyResult<()> { Ok(self.inner.sdg(qubit)?) }
+    /// T-dagger (inverse of T) on `qubit`.
+    fn tdg(&mut self, qubit: usize) -> PyResult<()> { Ok(self.inner.tdg(qubit)?) }
+    /// Phase gate: multiply the |1> amplitude of `qubit` by e^(i*lam).
+    fn p(&mut self, qubit: usize, lam: f64) -> PyResult<()> { Ok(self.inner.p(qubit, lam)?) }
+    /// General single-qubit gate U(theta, phi, lam), the same convention as Qiskit.
+    fn u(&mut self, qubit: usize, theta: f64, phi: f64, lam: f64) -> PyResult<()> {
+        Ok(self.inner.u(qubit, theta, phi, lam)?)
+    }
+    /// Controlled phase: multiply the |11> amplitude of `control`, `target` by e^(i*lam).
+    fn cp(&mut self, control: usize, target: usize, lam: f64) -> PyResult<()> { Ok(self.inner.cp(control, target, lam)?) }
+    /// Controlled RZ: rotate `target` about Z by `theta` when `control` is |1>.
+    fn crz(&mut self, control: usize, target: usize, theta: f64) -> PyResult<()> {
+        Ok(self.inner.crz(control, target, theta)?)
+    }
+    /// Toffoli: flip `target` when `control1` and `control2` are both |1>.
+    fn ccx(&mut self, control1: usize, control2: usize, target: usize) -> PyResult<()> {
+        Ok(self.inner.ccx(control1, control2, target)?)
+    }
+    /// Swap the states of `qubit1` and `qubit2` (recorded as three CNOTs).
+    fn swap(&mut self, qubit1: usize, qubit2: usize) -> PyResult<()> { Ok(self.inner.swap(qubit1, qubit2)?) }
+
+    /// Apply any 2x2 unitary `matrix` (nested lists or a NumPy array) to `target`,
+    /// optionally only where every qubit in `controls` is |1>.
+    #[pyo3(signature = (matrix, target, controls = Vec::new()))]
+    fn unitary(&mut self, matrix: Vec<Vec<Complex64>>, target: usize, controls: Vec<usize>) -> PyResult<()> {
+        let gate = match matrix.as_slice() {
+            [r0, r1] if r0.len() == 2 && r1.len() == 2 => [[r0[0], r0[1]], [r1[0], r1[1]]],
+            _ => return Err(PyValueError::new_err("matrix must be 2x2")),
+        };
+        Ok(self.inner.unitary(&controls, target, gate)?)
+    }
 
     /// Simulate the circuit and measure every qubit `shots` times.
     ///
@@ -115,21 +149,24 @@ impl PyQuantumCircuit {
         Ok(counts.into_iter().map(|(i, c)| (format_bitstring(i, n), c)).collect())
     }
 
-    /// Exact final state as a list of 2**n complex amplitudes, indexed by basis
-    /// state (wrap with `numpy.array(...)` for vector maths).
+    /// Exact final state as a NumPy array of 2**n complex128 amplitudes,
+    /// indexed by basis state.
     #[pyo3(signature = (backend = "auto"))]
-    fn statevector(&self, py: Python<'_>, backend: &str) -> PyResult<Vec<Complex64>> {
+    fn statevector<'py>(&self, py: Python<'py>, backend: &str) -> PyResult<Bound<'py, PyArray1<Complex64>>> {
         let kind = parse_backend(backend)?;
         let circuit = self.inner.clone();
-        Ok(py.detach(move || circuit.statevector(kind))?)
+        let amps = py.detach(move || circuit.statevector(kind))?;
+        Ok(amps.to_pyarray(py))
     }
 
-    /// Exact probability of each of the 2**n basis states after the circuit.
+    /// Exact probability of each of the 2**n basis states after the circuit,
+    /// as a NumPy float64 array.
     #[pyo3(signature = (backend = "auto"))]
-    fn probabilities(&self, py: Python<'_>, backend: &str) -> PyResult<Vec<f64>> {
+    fn probabilities<'py>(&self, py: Python<'py>, backend: &str) -> PyResult<Bound<'py, PyArray1<f64>>> {
         let kind = parse_backend(backend)?;
         let circuit = self.inner.clone();
-        Ok(py.detach(move || circuit.probabilities(kind))?)
+        let probs = py.detach(move || circuit.probabilities(kind))?;
+        Ok(probs.to_pyarray(py))
     }
 }
 

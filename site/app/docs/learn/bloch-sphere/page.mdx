@@ -1,0 +1,67 @@
+export const metadata = { title: "The Bloch sphere" };
+
+# The Bloch sphere
+
+Every state of a single qubit can be drawn as a point on the surface of a sphere. It turns gates from matrices into something you can picture: each one is a rotation.
+
+## Two angles describe any qubit
+
+An overall phase on the whole state cannot be measured, so it can be dropped. What is left of $\alpha\ket{0} + \beta\ket{1}$ fits in two angles:
+
+$$
+\ket{\psi} = \cos\tfrac{\theta}{2}\ket{0} + e^{i\varphi}\sin\tfrac{\theta}{2}\ket{1}, \qquad 0 \le \theta \le \pi,\ \ 0 \le \varphi < 2\pi
+$$
+
+$\theta$ is the latitude, measured down from the north pole, and $\varphi$ is the longitude around the equator. $\theta$ alone sets the measurement odds; $\varphi$ is the relative phase.
+
+## Landmarks
+
+| State | Angles | Where it sits |
+| --- | --- | --- |
+| $\ket{0}$ | $\theta = 0$ | North pole |
+| $\ket{1}$ | $\theta = \pi$ | South pole |
+| $\ket{+} = \tfrac{1}{\sqrt2}(\ket0 + \ket1)$ | $\theta = \tfrac{\pi}{2},\ \varphi = 0$ | On the equator, facing +X |
+| $\ket{-} = \tfrac{1}{\sqrt2}(\ket0 - \ket1)$ | $\theta = \tfrac{\pi}{2},\ \varphi = \pi$ | On the equator, facing −X |
+| $\tfrac{1}{\sqrt2}(\ket0 + i\ket1)$ | $\theta = \tfrac{\pi}{2},\ \varphi = \tfrac{\pi}{2}$ | On the equator, facing +Y |
+
+The poles are the basis states. Every point on the equator is an equal superposition, differing only in phase.
+
+## Gates are rotations
+
+| Gate | Rotation | Method |
+| --- | --- | --- |
+| $X$ | $\pi \text{ about } X$ | `qc.x(q)` |
+| $Y$ | $\pi \text{ about } Y$ | `qc.y(q)` |
+| $Z$ | $\pi \text{ about } Z$ | `qc.z(q)` |
+| $S$ | $\tfrac{\pi}{2} \text{ about } Z$ | `qc.s(q)` |
+| $T$ | $\tfrac{\pi}{4} \text{ about } Z$ | `qc.t(q)` |
+| $H$ | $\pi \text{ about } \tfrac{X+Z}{\sqrt2}$ | `qc.h(q)` |
+| $R_X(\theta),\ R_Y(\theta),\ R_Z(\theta)$ | $\theta \text{ about } X,\ Y \text{ or } Z$ | `qc.rx(q, theta)` |
+| $P(\lambda)$ | $\lambda \text{ about } Z$ | `qc.p(q, lam)` |
+
+A quarter turn about X takes the north pole to the equator, at the point facing −Y:
+
+$$
+R_X(\tfrac{\pi}{2})\ket{0} = \tfrac{1}{\sqrt2}\left(\ket{0} - i\ket{1}\right)
+$$
+
+```python
+import math
+import qsengine
+
+qc = qsengine.QuantumCircuit(1)
+qc.rx(0, math.pi / 2)
+
+print(qc.statevector())
+print(qc.probabilities())
+```
+
+<Output
+  printed={`[0.70710678+0.j         0.        -0.70710678j]
+[0.5 0.5]`}
+  caption="The second amplitude is −i/√2, exactly as the formula says, and the odds are 50/50."
+/>
+
+## Where the picture stops
+
+The sphere describes one qubit on its own. Two or more qubits that are entangled have no point on any sphere, which is exactly what makes them interesting. That is the subject of the next pages.

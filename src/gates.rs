@@ -51,6 +51,37 @@ pub const S: Gate = [[I, O], [O, c(0.0, 1.0)]];
 /// T (fourth root of Z): |1> -> e^(i*pi/4)|1>.
 pub const T: Gate = [[I, O], [O, c(FRAC_1_SQRT_2, FRAC_1_SQRT_2)]];
 
+/// S-dagger, the inverse of S: |1> -> -i|1>.
+pub const SDG: Gate = [[I, O], [O, c(0.0, -1.0)]];
+
+/// T-dagger, the inverse of T: |1> -> e^(-i*pi/4)|1>.
+pub const TDG: Gate = [[I, O], [O, c(FRAC_1_SQRT_2, -FRAC_1_SQRT_2)]];
+
+/// Phase gate: |1> -> e^(i*lambda)|1>. `p(pi)` is Z, `p(pi/2)` is S.
+pub fn p(lambda: f64) -> Gate {
+    [[I, O], [O, Complex64::from_polar(1.0, lambda)]]
+}
+
+/// General single-qubit gate U(theta, phi, lambda), the same convention as Qiskit's `UGate`.
+pub fn u(theta: f64, phi: f64, lambda: f64) -> Gate {
+    let (s, co) = (theta / 2.0).sin_cos();
+    [
+        [c(co, 0.0), -Complex64::from_polar(s, lambda)],
+        [Complex64::from_polar(s, phi), Complex64::from_polar(co, phi + lambda)],
+    ]
+}
+
+/// True if `g` is unitary (`g * g^dagger = I`) to within `tol`.
+pub fn is_unitary(g: &Gate, tol: f64) -> bool {
+    (0..2).all(|r| {
+        (0..2).all(|col| {
+            let sum = g[r][0] * g[col][0].conj() + g[r][1] * g[col][1].conj();
+            let expect = if r == col { I } else { O };
+            (sum - expect).norm() < tol
+        })
+    })
+}
+
 /// Rotation about the X axis of the Bloch sphere by `theta` radians.
 pub fn rx(theta: f64) -> Gate {
     let (s, co) = (theta / 2.0).sin_cos();
@@ -85,21 +116,20 @@ pub fn matmul(a: &Gate, b: &Gate) -> Gate {
 mod tests {
     use super::*;
 
-    /// U * U^dagger should be the identity for every gate.
-    fn assert_unitary(g: &Gate) {
-        for r in 0..2 {
-            for col in 0..2 {
-                let sum = g[r][0] * g[col][0].conj() + g[r][1] * g[col][1].conj();
-                let expect = if r == col { 1.0 } else { 0.0 };
-                assert!((sum - c(expect, 0.0)).norm() < 1e-12, "not unitary: {g:?}");
-            }
+    #[test]
+    fn all_gates_are_unitary() {
+        for g in [ID, X, Y, Z, H, S, T, SDG, TDG, rx(0.3), ry(1.1), rz(-2.0), p(0.7), u(0.4, -1.3, 2.2)] {
+            assert!(is_unitary(&g, 1e-12), "not unitary: {g:?}");
         }
+        assert!(!is_unitary(&[[I, I], [O, I]], 1e-9));
     }
 
     #[test]
-    fn all_gates_are_unitary() {
-        for g in [ID, X, Y, Z, H, S, T, rx(0.3), ry(1.1), rz(-2.0)] {
-            assert_unitary(&g);
-        }
+    fn named_identities() {
+        let close = |a: &Gate, b: &Gate| (0..2).all(|r| (0..2).all(|k| (a[r][k] - b[r][k]).norm() < 1e-12));
+        assert!(close(&matmul(&S, &SDG), &ID));
+        assert!(close(&matmul(&T, &TDG), &ID));
+        assert!(close(&p(std::f64::consts::FRAC_PI_2), &S));
+        assert!(close(&u(std::f64::consts::FRAC_PI_2, 0.0, std::f64::consts::PI), &H));
     }
 }

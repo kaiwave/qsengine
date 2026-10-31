@@ -1,0 +1,69 @@
+import { BELL } from "../../../content";
+
+export const metadata = { title: "Entanglement" };
+
+# Entanglement
+
+Two qubits are entangled when their joint state cannot be split into a state for each one. Measuring one then tells you about the other, however far apart they are.
+
+## Building a Bell state
+
+Start with both qubits in $\ket{0}$ and apply a Hadamard to qubit 0:
+
+$$
+\ket{00} \xrightarrow{\;H_0\;} \tfrac{1}{\sqrt2}\left(\ket{00} + \ket{01}\right)
+$$
+
+Qubit 0 is the right-hand digit, so it is now in superposition and qubit 1 is still 0. This is still a product state. Now a CNOT with qubit 0 as control flips qubit 1 only in the term where qubit 0 is 1:
+
+$$
+\tfrac{1}{\sqrt2}\left(\ket{00} + \ket{01}\right) \xrightarrow{\;\mathrm{CNOT}_{0 \to 1}\;} \tfrac{1}{\sqrt2}\left(\ket{00} + \ket{11}\right)
+$$
+
+That last state is a *Bell state*. In qsengine it is two lines:
+
+<CodeBlock code={BELL.code} label="Copy the Bell state example" />
+<Output printed={BELL.printed} rows={BELL.rows} caption={BELL.caption} />
+
+## Why it cannot be split
+
+If the Bell state were a product of two single-qubit states, then by the tensor product rule
+
+$$
+(\alpha\ket0 + \beta\ket1)\otimes(\gamma\ket0 + \delta\ket1) = \alpha\gamma\ket{00} + \alpha\delta\ket{01} + \beta\gamma\ket{10} + \beta\delta\ket{11}
+$$
+
+and we would need $\alpha\gamma = \beta\delta = \tfrac{1}{\sqrt2}$ while $\alpha\delta = \beta\gamma = 0$. The second pair forces one of the four numbers to be zero, which breaks the first pair. No choice works, so the state is entangled.
+
+## Correlation, not communication
+
+Each qubit on its own looks like a fair coin: 0 or 1, half the time each. Only the pair is special, because the two results always agree. Compare a Hadamard on both qubits, which gives four outcomes with no link between the qubits:
+
+```python
+qc = qsengine.QuantumCircuit(2)
+qc.h(0)
+qc.cx(0, 1)
+print(qc.probabilities())   # entangled
+
+qc = qsengine.QuantumCircuit(2)
+qc.h(0)
+qc.h(1)
+print(qc.probabilities())   # independent
+```
+
+<Output
+  printed={`[0.5 0.  0.  0.5]
+[0.25 0.25 0.25 0.25]`}
+/>
+
+Because each side alone is random, entanglement cannot send a message faster than light. It can still do useful work; teleportation and many algorithms are built on it.
+
+## More than two qubits
+
+Chaining CNOTs spreads the entanglement to any number of qubits. Three gives the GHZ state:
+
+$$
+\tfrac{1}{\sqrt2}\left(\ket{000} + \ket{111}\right)
+$$
+
+The [exact amplitudes example](/docs/examples/#ghz) builds it and prints all eight amplitudes.

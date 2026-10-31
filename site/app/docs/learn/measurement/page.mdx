@@ -1,0 +1,74 @@
+export const metadata = { title: "Measurement" };
+
+# Measurement
+
+You never see amplitudes directly. Measuring a qubit always gives a plain 0 or 1, and the amplitudes only decide how likely each one is.
+
+## The Born rule
+
+For a qubit in the state $\alpha\ket{0} + \beta\ket{1}$, measurement gives
+
+$$
+P(0) = |\alpha|^2 = |\braket{0|\psi}|^2, \qquad P(1) = |\beta|^2 = |\braket{1|\psi}|^2
+$$
+
+After the measurement the qubit is left in whichever state was seen. The superposition is gone, so measuring again gives the same answer.
+
+## Shots
+
+One measurement tells you almost nothing about the probabilities. Real quantum computers, and qsengine, run the circuit many times and count the results. Each run is a *shot*. A rotation by $\pi/3$ about the Y axis gives
+
+$$
+R_Y(\tfrac{\pi}{3})\ket{0} = \cos\tfrac{\pi}{6}\ket{0} + \sin\tfrac{\pi}{6}\ket{1}, \qquad P(0) = \cos^2\tfrac{\pi}{6} = 0.75
+$$
+
+```python
+import math
+import qsengine
+
+qc = qsengine.QuantumCircuit(1)
+qc.ry(0, math.pi / 3)
+
+print(qc.probabilities())
+print(qc.run(shots=1000, seed=7))
+```
+
+<Output
+  printed={`[0.75 0.25]
+{'1': 257, '0': 743}`}
+  rows={[["0", 743, 1000], ["1", 257, 1000]]}
+  caption="probabilities() gives the exact 0.75; 1000 shots give 743, close to it but not exact."
+/>
+
+The more shots, the closer the counts get to the probabilities. `probabilities()` skips sampling altogether, which no real device can do. See [Running circuits](/docs/running/).
+
+## Phase: what measurement cannot see
+
+Amplitudes can be negative or complex, and squaring hides the difference. These two states give exactly the same measurement statistics:
+
+$$
+\ket{+} = \tfrac{1}{\sqrt{2}}\left(\ket{0} + \ket{1}\right), \qquad \ket{-} = \tfrac{1}{\sqrt{2}}\left(\ket{0} - \ket{1}\right)
+$$
+
+The sign is called the *relative phase*, and it is not just bookkeeping: a later gate can turn it into a difference you can measure. Hadamard twice returns to $\ket{0}$, but a Z gate in the middle flips the phase and the result becomes $\ket{1}$:
+
+```python
+qc = qsengine.QuantumCircuit(1)
+qc.h(0)
+qc.h(0)
+print(qc.probabilities())
+
+qc = qsengine.QuantumCircuit(1)
+qc.h(0)
+qc.z(0)
+qc.h(0)
+print(qc.probabilities())
+```
+
+<Output
+  printed={`[1. 0.]
+[0. 1.]`}
+  caption="The Z gate changed nothing you could measure on its own, yet it flipped the final answer."
+/>
+
+This is the effect quantum algorithms rely on: steer the phases so wrong answers cancel and right answers add up. The [Deutsch-Jozsa algorithm](/docs/learn/deutsch-jozsa/) is a complete example.

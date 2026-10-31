@@ -58,7 +58,16 @@ impl QuantumCircuit {
         Ok(())
     }
 
-    // Named gates: same names and meaning as on `QuantumBackend`.
+    /// Record a user-supplied 2x2 `gate`, after checking it is unitary.
+    /// [`add_gate`](Self::add_gate) trusts its matrix; this is the entry point for untrusted input.
+    pub fn unitary(&mut self, controls: &[usize], target: usize, gate: Gate) -> Result<()> {
+        if !gates::is_unitary(&gate, 1e-9) {
+            return Err(QsError::NotUnitary);
+        }
+        self.add_gate(controls, target, gate)
+    }
+
+    // Named gates. The first eleven match `QuantumBackend`; the rest are circuit-only.
     pub fn x(&mut self, q: usize) -> Result<()> { self.add_gate(&[], q, gates::X) }
     pub fn y(&mut self, q: usize) -> Result<()> { self.add_gate(&[], q, gates::Y) }
     pub fn z(&mut self, q: usize) -> Result<()> { self.add_gate(&[], q, gates::Z) }
@@ -73,6 +82,30 @@ impl QuantumCircuit {
     }
     pub fn cz(&mut self, control: usize, target: usize) -> Result<()> {
         self.add_gate(&[control], target, gates::Z)
+    }
+    pub fn sdg(&mut self, q: usize) -> Result<()> { self.add_gate(&[], q, gates::SDG) }
+    pub fn tdg(&mut self, q: usize) -> Result<()> { self.add_gate(&[], q, gates::TDG) }
+    pub fn p(&mut self, q: usize, lambda: f64) -> Result<()> { self.add_gate(&[], q, gates::p(lambda)) }
+    pub fn u(&mut self, q: usize, theta: f64, phi: f64, lambda: f64) -> Result<()> {
+        self.add_gate(&[], q, gates::u(theta, phi, lambda))
+    }
+    pub fn cp(&mut self, control: usize, target: usize, lambda: f64) -> Result<()> {
+        self.add_gate(&[control], target, gates::p(lambda))
+    }
+    pub fn crz(&mut self, control: usize, target: usize, theta: f64) -> Result<()> {
+        self.add_gate(&[control], target, gates::rz(theta))
+    }
+    /// Toffoli: flip `target` when both controls are |1>.
+    pub fn ccx(&mut self, c1: usize, c2: usize, target: usize) -> Result<()> {
+        self.add_gate(&[c1, c2], target, gates::X)
+    }
+    /// Swap two qubits, as three CNOTs (the kernel only knows controlled 2x2 gates).
+    pub fn swap(&mut self, a: usize, b: usize) -> Result<()> {
+        // Validate first so a bad swap records nothing, not one or two stray CNOTs.
+        control_mask(self.num_qubits, &[a], b)?;
+        self.cx(a, b)?;
+        self.cx(b, a)?;
+        self.cx(a, b)
     }
 
     /// Apply every instruction to an existing backend, with single-qubit gate fusion.
@@ -190,6 +223,9 @@ mod tests {
         let mut qc = QuantumCircuit::new(2).unwrap();
         assert_eq!(qc.h(2), Err(QsError::QubitOutOfRange { qubit: 2, num_qubits: 2 }));
         assert_eq!(qc.cx(0, 0), Err(QsError::DuplicateQubit(0)));
+        assert_eq!(qc.swap(1, 1), Err(QsError::DuplicateQubit(1)));
+        assert_eq!(qc.swap(0, 5), Err(QsError::QubitOutOfRange { qubit: 5, num_qubits: 2 }));
+        assert_eq!(qc.unitary(&[], 0, [[gates::H[0][0]; 2]; 2]), Err(QsError::NotUnitary));
         assert!(qc.instructions().is_empty());
     }
 

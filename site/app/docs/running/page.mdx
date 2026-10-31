@@ -1,0 +1,42 @@
+export const metadata = { title: "Running circuits" };
+
+# Running circuits
+
+A circuit can give you three kinds of result. Each call simulates the whole circuit from |0…0⟩ again, so you can call them as often as you like and the circuit never changes.
+
+| Method | Returns | Use it for |
+| --- | --- | --- |
+| `run(shots, seed, backend)` | `dict[str, int]` | Measurement counts, as a real device gives them |
+| `probabilities(backend)` | NumPy array of `float64` | The exact probability of each basis state |
+| `statevector(backend)` | NumPy array of `complex128` | The exact amplitudes |
+
+## Shots and counts
+
+`run()` measures every qubit `shots` times (1024 if you leave it out) and counts the results. Only the counts come back to Python; the state stays in Rust.
+
+```python
+counts = qc.run(shots=1000, seed=1)
+print(sum(counts.values()))
+```
+
+<Output printed="1000" />
+
+## Seeds
+
+Pass `seed` to get the same counts on every run, which is what you want in tests. Without it each run draws fresh randomness. The same seed gives the same counts on the same backend.
+
+## Bit order
+
+Qubit 0 is the rightmost character of every bitstring, the same convention as Qiskit. In the arrays returned by `probabilities()` and `statevector()`, index *i* is the basis state whose binary form is *i*, again with qubit 0 as the lowest bit.
+
+```python
+qc = qsengine.QuantumCircuit(3)
+qc.x(0)
+print(qc.run(shots=10, seed=0))
+```
+
+<Output printed="{'001': 10}" />
+
+## Exact results
+
+`probabilities()` and `statevector()` return all 2ⁿ values, so they grow quickly: 20 qubits is about a million numbers. They come back as NumPy arrays, copied straight from Rust without a Python object per number, ready for vector maths. Use `run()` when you only need counts. See the [exact amplitudes example](/docs/examples/#ghz).

@@ -10,7 +10,7 @@
 //!
 //! | Module      | Purpose                                                        |
 //! |-------------|----------------------------------------------------------------|
-//! | [`gates`]   | 2x2 gate matrices (X, Y, Z, H, S, T, rotations)                |
+//! | [`gates`]   | 2x2 gate matrices (Paulis, H, S, T, phase, U, rotations)       |
 //! | [`backend`] | The [`QuantumBackend`] trait: the one API every simulator obeys |
 //! | [`circuit`] | [`QuantumCircuit`]: record gates now, run them later           |
 //! | [`engine`]  | [`QuantumState`]: multithreaded CPU backend (f64 precision)    |
@@ -69,6 +69,8 @@ pub enum QsError {
     DuplicateQubit(usize),
     /// A circuit was applied to a backend with a different number of qubits.
     SizeMismatch { circuit: usize, backend: usize },
+    /// A user-supplied gate matrix was not a 2x2 unitary.
+    NotUnitary,
     /// No usable GPU, or the GPU driver reported an error.
     Gpu(String),
 }
@@ -86,6 +88,7 @@ impl fmt::Display for QsError {
             QsError::SizeMismatch { circuit, backend } => {
                 write!(f, "circuit has {circuit} qubits but backend has {backend}")
             }
+            QsError::NotUnitary => write!(f, "gate matrix must be a 2x2 unitary"),
             QsError::Gpu(msg) => write!(f, "GPU error: {msg}"),
         }
     }

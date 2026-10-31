@@ -1,0 +1,78 @@
+export const metadata = { title: "Qubits and bra-ket notation" };
+
+# Qubits and bra-ket notation
+
+A classical bit is either 0 or 1. A qubit has two basic states too, but it can also be in a blend of both at once. This page shows how physicists write those states down, which is the notation the rest of these pages use.
+
+## Kets
+
+A state is written inside a *ket*, the symbol $\ket{\;}$. The two basic states of a qubit are
+
+$$
+\ket{0} = \begin{pmatrix} 1 \\ 0 \end{pmatrix}, \qquad \ket{1} = \begin{pmatrix} 0 \\ 1 \end{pmatrix}
+$$
+
+Under the notation, a state is just a column of numbers. $\ket{0}$ and $\ket{1}$ play the role of 0 and 1, and every qsengine circuit starts with all its qubits in $\ket{0}$.
+
+## Superposition
+
+Any other state of one qubit is a combination of the two basic states:
+
+$$
+\ket{\psi} = \alpha\ket{0} + \beta\ket{1} = \begin{pmatrix} \alpha \\ \beta \end{pmatrix}
+$$
+
+$\alpha$ and $\beta$ are *amplitudes*. They are complex numbers, and they must satisfy
+
+$$
+|\alpha|^2 + |\beta|^2 = 1
+$$
+
+because, as the [measurement page](/docs/learn/measurement/) explains, the squares are probabilities and must add up to 1. A state with both amplitudes non-zero is in *superposition*.
+
+## Making a superposition
+
+The Hadamard gate turns $\ket{0}$ into an equal superposition:
+
+$$
+H\ket{0} = \frac{1}{\sqrt{2}}\ket{0} + \frac{1}{\sqrt{2}}\ket{1}
+$$
+
+qsengine shows the two amplitudes directly. $1/\sqrt{2} \approx 0.7071$:
+
+```python
+import qsengine
+
+qc = qsengine.QuantumCircuit(1)
+qc.h(0)
+
+print(qc.statevector())
+print(qc.run(shots=1000, seed=3))
+```
+
+<Output
+  printed={`[0.70710678+0.j 0.70710678+0.j]
+{'0': 493, '1': 507}`}
+  rows={[["0", 493, 1000], ["1", 507, 1000]]}
+  caption="Equal amplitudes, so 0 and 1 each come up about half the time."
+/>
+
+## Gates are matrices
+
+A gate on one qubit is a 2 by 2 matrix, and applying it multiplies the state by that matrix. The X gate swaps the two amplitudes, which is why it acts as a NOT:
+
+$$
+X = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}, \qquad X\ket{0} = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}\begin{pmatrix} 1 \\ 0 \end{pmatrix} = \ket{1}
+$$
+
+Every gate in qsengine is a matrix like this. The [gates page](/docs/gates/) lists them all.
+
+## Bras
+
+The mirror image of a ket is a *bra*, $\bra{\psi}$: the same numbers laid out as a row and complex-conjugated. Putting a bra against a ket gives a single number, the overlap of two states:
+
+$$
+\braket{0|\psi} = \alpha, \qquad \braket{1|\psi} = \beta
+$$
+
+That is how you pick an amplitude out of a state, and it is the start of the measurement rule.

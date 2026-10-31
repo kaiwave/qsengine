@@ -41,8 +41,10 @@ jobs:
       - name: Test the wheel
         if: matrix.target == 'x86_64'
         run: |
-          pip install qsengine --no-index --find-links dist --force-reinstall
+          # Dependencies come from PyPI; qsengine itself only from dist/, so we test this wheel, not PyPI's.
+          # --no-deps: with --no-index, --force-reinstall would otherwise try (and fail) to reinstall numpy.
           pip install pytest numpy
+          pip install qsengine --no-index --find-links dist --force-reinstall --no-deps
           pytest
 
   windows:
@@ -65,8 +67,10 @@ jobs:
       - name: Test the wheel
         shell: bash
         run: |
-          pip install qsengine --no-index --find-links dist --force-reinstall
+          # Dependencies come from PyPI; qsengine itself only from dist/, so we test this wheel, not PyPI's.
+          # --no-deps: with --no-index, --force-reinstall would otherwise try (and fail) to reinstall numpy.
           pip install pytest numpy
+          pip install qsengine --no-index --find-links dist --force-reinstall --no-deps
           pytest
 
   macos:
@@ -94,8 +98,10 @@ jobs:
           path: dist
       - name: Test the wheel
         run: |
-          pip install qsengine --no-index --find-links dist --force-reinstall
+          # Dependencies come from PyPI; qsengine itself only from dist/, so we test this wheel, not PyPI's.
+          # --no-deps: with --no-index, --force-reinstall would otherwise try (and fail) to reinstall numpy.
           pip install pytest numpy
+          pip install qsengine --no-index --find-links dist --force-reinstall --no-deps
           pytest
 
   sdist:
