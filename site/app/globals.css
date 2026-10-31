@@ -238,7 +238,7 @@ p, li, dd { text-wrap: pretty; }
 @media (max-width: 720px) { .index { grid-template-columns: 1fr; } }
 
 /* Maths: displayed equations scroll on their own rather than the page. */
-.math-block { overflow-x: auto; overflow-y: hidden; padding: 4px 0; font-size: 1.1em; }
+.prose .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; font-size: 1.1em; }
 .katex { font-size: 1.08em; }
 
 /* Tables: real tables, separated by tone steps, never lines. */

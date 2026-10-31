@@ -23,6 +23,8 @@ Z = np.diag([1, -1]).astype(complex)
 H = np.array([[1, 1], [1, -1]], dtype=complex) / math.sqrt(2)
 S = np.diag([1, 1j])
 T = np.diag([1, np.exp(1j * math.pi / 4)])
+SDG = S.conj()
+TDG = T.conj()
 P0 = np.diag([1, 0]).astype(complex)  # |0><0|
 P1 = np.diag([0, 1]).astype(complex)  # |1><1|
 
@@ -41,6 +43,15 @@ def RZ(t):
     return np.diag([np.exp(-1j * t / 2), np.exp(1j * t / 2)])
 
 
+def P(lam):
+    return np.diag([1, np.exp(1j * lam)])
+
+
+def U(theta, phi, lam):
+    c, s = math.cos(theta / 2), math.sin(theta / 2)
+    return np.array([[c, -np.exp(1j * lam) * s], [np.exp(1j * phi) * s, np.exp(1j * (phi + lam)) * c]])
+
+
 def full(n, ops):
     """Kronecker product placing ops[q] on qubit q and identity elsewhere.
 
@@ -55,6 +66,11 @@ def full(n, ops):
 def controlled(n, c, t, U):
     """|0><0| on the control does nothing; |1><1| applies U to the target."""
     return full(n, {c: P0}) + full(n, {c: P1, t: U})
+
+
+def toffoli(n, c1, c2, t):
+    """Identity everywhere except |11> on the controls, where X hits the target."""
+    return np.eye(2**n) - full(n, {c1: P1, c2: P1}) + full(n, {c1: P1, c2: P1, t: X})
 
 
 class Reference:
@@ -75,14 +91,24 @@ class Reference:
 def build_pair(n, gates):
     """Apply the same gate list to a qsengine circuit and to the reference."""
     qc, ref = qsengine.QuantumCircuit(n), Reference(n)
-    singles = {"x": X, "y": Y, "z": Z, "h": H, "s": S, "t": T}
-    rotations = {"rx": RX, "ry": RY, "rz": RZ}
+    singles = {"x": X, "y": Y, "z": Z, "h": H, "s": S, "t": T, "sdg": SDG, "tdg": TDG}
+    rotations = {"rx": RX, "ry": RY, "rz": RZ, "p": P}
     for name, *args in gates:
         getattr(qc, name)(*args)
         if name in singles:
             ref.one(singles[name], *args)
         elif name in rotations:
             ref.one(rotations[name](args[1]), args[0])
+        elif name == "u":
+            ref.one(U(*args[1:]), args[0])
+        elif name in ("cp", "crz"):
+            ref.two({"cp": P, "crz": RZ}[name](args[2]), args[0], args[1])
+        elif name == "ccx":
+            ref.state = toffoli(n, *args) @ ref.state
+        elif name == "swap":
+            a, b = args
+            for c, t in ((a, b), (b, a), (a, b)):
+                ref.two(X, c, t)
         else:
             ref.two({"cx": X, "cz": Z}[name], *args)
     return qc, ref
@@ -147,6 +173,54 @@ def test_random_circuits_against_numpy(backend, tol):
                 gates.append((kind, q))
         qc, ref = build_pair(n, gates)
         np.testing.assert_allclose(qc.statevector(backend=backend), ref.state, atol=tol)
+
+
+@pytest.mark.parametrize("backend,tol", BACKENDS)
+def test_new_gates_against_numpy(backend, tol):
+    gates = [
+        ("h", 0), ("h", 1), ("h", 2), ("sdg", 0), ("tdg", 1), ("p", 2, 0.9), ("u", 3, 0.4, -1.1, 2.3),
+        ("cp", 0, 2, 1.7), ("crz", 3, 1, -0.6), ("ccx", 0, 1, 3), ("swap", 0, 3), ("h", 1),
+    ]
+    qc, ref = build_pair(4, gates)
+    np.testing.assert_allclose(qc.statevector(backend=backend), ref.state, atol=tol)
+
+
+def test_swap_moves_a_bit():
+    qc = qsengine.QuantumCircuit(3)
+    qc.x(0)
+    qc.swap(0, 2)
+    assert qc.run(shots=10, seed=0) == {"100": 10}
+
+
+def test_unitary_matches_named_gate():
+    a, b = qsengine.QuantumCircuit(3), qsengine.QuantumCircuit(3)
+    for qc in (a, b):
+        qc.h(0)
+        qc.h(1)
+    a.ccx(0, 1, 2)
+    b.unitary(X, 2, controls=[0, 1])  # a NumPy array works as the matrix
+    a.u(0, 0.3, 0.2, 0.1)
+    b.unitary(U(0.3, 0.2, 0.1).tolist(), 0)  # so do nested lists
+    np.testing.assert_allclose(a.statevector(backend="cpu"), b.statevector(backend="cpu"), atol=1e-12)
+
+
+def test_unitary_rejects_bad_matrices():
+    qc = qsengine.QuantumCircuit(2)
+    with pytest.raises(ValueError, match="unitary"):
+        qc.unitary([[1, 1], [0, 1]], 0)
+    with pytest.raises(ValueError, match="2x2"):
+        qc.unitary(np.eye(4), 0)
+    with pytest.raises(ValueError, match="more than once"):
+        qc.swap(1, 1)
+    assert len(qc) == 0
+
+
+def test_results_are_numpy_arrays():
+    qc = qsengine.QuantumCircuit(2)
+    qc.h(0)
+    sv, probs = qc.statevector(backend="cpu"), qc.probabilities(backend="cpu")
+    assert isinstance(sv, np.ndarray) and sv.dtype == np.complex128 and sv.shape == (4,)
+    assert isinstance(probs, np.ndarray) and probs.dtype == np.float64 and probs.shape == (4,)
 
 
 def test_run_returns_bitstring_counts():

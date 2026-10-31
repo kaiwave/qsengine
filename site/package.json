@@ -6,9 +6,19 @@
     "build": "next build"
   },
   "dependencies": {
+    "@mdx-js/loader": "3.1.1",
+    "@mdx-js/react": "3.1.1",
+    "@next/mdx": "16.4.3",
     "katex": "0.19.1",
     "next": "16.4.3",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "rehype-katex": "7.0.1",
+    "rehype-slug": "6.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0"
+  },
+  "overrides": {
+    "katex": "$katex"
   }
 }

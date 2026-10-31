@@ -1,6 +1,6 @@
 [package]
 name = "qsengine"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 license = "MIT"
 description = "High-performance state-vector quantum simulator (CPU + portable GPU backends)"
@@ -23,7 +23,7 @@ default = ["gpu"]
 gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
 # Python bindings. Off for plain `cargo build/test`; maturin turns it on
 # (see [tool.maturin] in pyproject.toml).
-python = ["dep:pyo3"]
+python = ["dep:pyo3", "dep:numpy"]
 
 [dependencies]
 num-complex = "0.4.6"
@@ -36,3 +36,5 @@ bytemuck = { version = "1", features = ["derive"], optional = true }
 # abi3-py39: one compiled wheel works on every CPython from 3.9 up.
 # num-complex: amplitudes convert straight to Python `complex`.
 pyo3 = { version = "0.30", features = ["abi3-py39", "num-complex"], optional = true }
+# statevector() / probabilities() return NumPy arrays without per-element Python objects.
+numpy = { version = "0.30", optional = true }

@@ -44,7 +44,7 @@ export default function Home() {
         <h2 id="release-title">What is in {VERSION}</h2>
         <ul className="release__list">
           <li><strong>Two backends, one API.</strong> A multithreaded CPU backend in 64-bit precision and a GPU backend for any vendor, chosen automatically.</li>
-          <li><strong>Eleven gates.</strong> X, Y, Z, H, S, T, three rotations, CNOT and controlled Z.</li>
+          <li><strong>Nineteen gates.</strong> Paulis, phases, rotations, U, controlled gates, SWAP and Toffoli, plus any 2x2 unitary you supply.</li>
           <li><strong>Measured speed.</strong> 70 ms for 22 qubits on the GPU, against 367 ms for Qiskit Aer on the same circuit.</li>
           <li><strong>One wheel per platform</strong> for every CPython from 3.9.</li>
         </ul>

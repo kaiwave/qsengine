@@ -1,5 +1,5 @@
 // Everything the site says about qsengine, in one place.
-// Every printed output was produced by running the code with qsengine 1.0.0 (re-check them after a release that changes behaviour);
+// Every printed output was produced by running the code with qsengine 1.0.1 (re-check them after a release that changes behaviour);
 // benchmark figures come from benchmarks/results.csv.
 
 // From Cargo.toml, set in next.config.mjs.
@@ -31,7 +31,7 @@ export const DOCS = [
   {
     group: "User guide",
     items: [
-      { href: "/docs/gates/", title: "Gates", blurb: "Every gate, the method that applies it and what it does." },
+      { href: "/docs/gates/", title: "Gates", blurb: "Every gate, the method that applies it, and your own unitaries." },
       { href: "/docs/running/", title: "Running circuits", blurb: "Shots and counts, exact states, seeds and bit order." },
       { href: "/docs/backends/", title: "CPU and GPU backends", blurb: "Precision, hardware and how auto chooses." },
     ],
@@ -82,8 +82,9 @@ qc.cx(1, 2)
 
 print(qc.probabilities())
 print(qc.statevector())`,
-    printed: `[0.5000000000000001, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5000000000000001]
-[(0.7071067811865476+0j), 0j, 0j, 0j, 0j, 0j, 0j, (0.7071067811865476+0j)]`,
+    printed: `[0.5 0.  0.  0.  0.  0.  0.  0.5]
+[0.70710678+0.j 0.        +0.j 0.        +0.j 0.        +0.j
+ 0.        +0.j 0.        +0.j 0.        +0.j 0.70710678+0.j]`,
     caption: "The exact probability of each of the 8 basis states.",
     rows: ["000", "001", "010", "011", "100", "101", "110", "111"].map((b) => [b, b === "000" || b === "111" ? 0.5 : 0, 1]),
   },
@@ -99,7 +100,7 @@ qc.ry(0, math.pi / 3)
 
 print(qc.probabilities())
 print(qc.run(shots=1000, seed=7))`,
-    printed: `[0.7500000000000001, 0.24999999999999994]
+    printed: `[0.75 0.25]
 {'1': 257, '0': 743}`,
     caption: "cos²(π/6) = 0.75, and 743 of 1000 shots measured 0.",
     rows: [["0", 743, 1000], ["1", 257, 1000]],
@@ -132,30 +133,7 @@ export const BENCH = [
   { qubits: 22, python: "not run", cpu: "1.03 s", gpu: "70 ms", aer: "367 ms" },
 ];
 
-// [name, method, what it does]
-export const GATES = [
-  ["Hadamard", "qc.h(q)", "Puts a basis state into an equal superposition: |0⟩ becomes (|0⟩ + |1⟩)/√2."],
-  ["Pauli X", "qc.x(q)", "Bit flip, the quantum NOT: |0⟩ and |1⟩ swap."],
-  ["Pauli Y", "qc.y(q)", "Bit flip and phase flip: |0⟩ becomes i|1⟩."],
-  ["Pauli Z", "qc.z(q)", "Phase flip: |1⟩ becomes −|1⟩."],
-  ["S", "qc.s(q)", "Quarter turn of phase: |1⟩ becomes i|1⟩."],
-  ["T", "qc.t(q)", "Eighth turn of phase: |1⟩ becomes e^(iπ/4)|1⟩."],
-  ["RX(θ)", "qc.rx(q, theta)", "Rotation by θ radians about the X axis of the Bloch sphere."],
-  ["RY(θ)", "qc.ry(q, theta)", "Rotation by θ radians about the Y axis."],
-  ["RZ(θ)", "qc.rz(q, theta)", "Rotation by θ radians about the Z axis."],
-  ["CNOT", "qc.cx(control, target)", "Flips the target when the control is |1⟩."],
-  ["Controlled Z", "qc.cz(control, target)", "Flips the phase of |11⟩. Either qubit can be the control."],
-];
 
-// [capability, cpu, gpu, auto]
-export const COMPARE = [
-  ["How you ask for it", 'backend="cpu"', 'backend="gpu"', 'backend="auto" (the default)'],
-  ["Precision", "64-bit floats", "32-bit floats, within 1e-5 of the CPU", "64-bit below 14 qubits, 32-bit from 14"],
-  ["Runs on", "Every CPU core, through Rayon", "Any NVIDIA, AMD, Intel or Apple GPU, through wgpu", "Whichever is faster for the size"],
-  ["Fastest for", "Fewer than 14 qubits", "14 qubits and more", "Both, by switching at 14"],
-  ["Largest register", "30 qubits (16 GiB)", "What the GPU memory holds", "That of the backend it picks"],
-  ["With no GPU", "Works as usual", "Raises RuntimeError", "Falls back to the CPU"],
-];
 
 export const FAQ = [
   ["Do I need a GPU?", "No. Without one, or without a working driver, the default backend runs everything on the CPU and your code does not change."],
@@ -165,7 +143,7 @@ export const FAQ = [
   ["Which way round are the bits?", "Qubit 0 is the rightmost character, as in Qiskit. On three qubits, qc.x(0) measures as \"001\"."],
   ["Is it faster than Qiskit Aer?", "In our benchmark the GPU backend is 3 to 9 times faster from 14 qubits. The CPU backend is faster up to about 16 qubits and slower above 17, where Aer fuses multi-qubit gates."],
   ["Will the same seed give the same counts?", "Yes. run(seed=42) returns identical counts every time on the same backend."],
-  ["What is missing?", "SWAP and mid-circuit measurement are not in 1.0. Every qubit is measured at the end of the circuit."],
+  ["What is missing?", "Mid-circuit measurement is not in 1.0. Every qubit is measured at the end of the circuit."],
   ["Which Python versions work?", "CPython 3.9 and newer. One wheel per platform covers all of them."],
   ["Is it free?", "Yes. qsengine is open source under the MIT licence."],
 ];

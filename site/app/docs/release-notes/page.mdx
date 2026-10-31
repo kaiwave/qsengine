@@ -1,0 +1,49 @@
+export const metadata = { title: "Release notes" };
+
+# Release notes
+
+## Version 1.0.1
+
+More gates, and exact results as NumPy arrays.
+
+### Gates
+
+- New single-qubit gates: S dagger `sdg`, T dagger `tdg`, phase `p` and the general `u`.
+- New gates on several qubits: controlled phase `cp`, controlled RZ `crz`, `swap` and the Toffoli gate `ccx`.
+- `unitary(matrix, target, controls=[])` applies any 2 by 2 unitary, optionally controlled, and rejects matrices that are not unitary.
+
+### Results
+
+- `statevector()` and `probabilities()` return NumPy arrays (`complex128` and `float64`) instead of lists. They are built straight from Rust memory, which is much faster for large circuits.
+- NumPy is now installed with qsengine.
+
+Code that indexes, loops over or sums the results works as before. Code that needs a real `list`, for example `result + [0.0]` or `json.dumps(result)`, needs `.tolist()` first.
+
+## Version 1.0.0
+
+The first release.
+
+### Simulation
+
+- State-vector simulation of up to 30 qubits.
+- Eleven gates: X, Y, Z, H, S, T, RX, RY, RZ, CNOT and controlled Z.
+- Single-qubit gate fusion: consecutive gates on one qubit cost one pass over the state.
+- `run()` for measurement counts, `probabilities()` and `statevector()` for exact results.
+- Repeatable counts with `seed`.
+
+### Backends
+
+- A CPU backend in 64-bit precision that uses every core.
+- A GPU backend in 32-bit precision for NVIDIA, AMD, Intel and Apple GPUs, through Vulkan, DirectX 12 or Metal.
+- `backend="auto"`, the default, uses the CPU below 14 qubits and the GPU from 14, and falls back to the CPU when no GPU is available.
+
+### Packaging
+
+- One wheel per platform for CPython 3.9 and newer.
+- Type hints for editors and type checkers.
+- Released under the MIT licence.
+
+### Known limits
+
+- No SWAP gate and no mid-circuit measurement yet.
+- Above about 17 qubits the CPU backend is slower than Qiskit Aer; the GPU backend is not.

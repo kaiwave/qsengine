@@ -1,0 +1,111 @@
+export const metadata = { title: "The Deutsch-Jozsa algorithm" };
+
+# The Deutsch-Jozsa algorithm
+
+This is the first algorithm where a quantum computer provably needs fewer steps than any classical one. It is small enough to run in full on qsengine and uses every idea from the earlier pages: superposition, phase and interference.
+
+## The problem
+
+You are given a function $f$ that takes $n$ bits and returns one bit. You are promised it is one of two kinds:
+
+- **Constant:** it returns the same value for every input.
+- **Balanced:** it returns 0 for exactly half the inputs and 1 for the other half.
+
+Which kind is it? Classically you may have to try $2^{n-1} + 1$ inputs before you can be sure. Deutsch-Jozsa answers with **one** call to $f$.
+
+## The function as a gate
+
+On a quantum computer $f$ is given as an *oracle*: a gate that flips a helper qubit when $f(x) = 1$,
+
+$$
+U_f\ket{x}\ket{y} = \ket{x}\ket{y \oplus f(x)}
+$$
+
+With qsengine’s gates, a constant oracle is nothing at all ($f = 0$) or an X on the helper ($f = 1$), and a balanced oracle is a set of CNOTs from input qubits to the helper.
+
+## The steps
+
+**Prepare.** Put the helper in $\ket{1}$, then apply a Hadamard to every qubit. The inputs become an equal superposition of all $2^n$ values and the helper becomes $\ket{-}$:
+
+$$
+\frac{1}{\sqrt{2^n}} \sum_{x} \ket{x} \otimes \ket{-}
+$$
+
+**Query.** Because the helper is $\ket{-}$, flipping it only multiplies the state by $-1$. The answer of $f$ moves into the phase of each input:
+
+$$
+\frac{1}{\sqrt{2^n}} \sum_{x} (-1)^{f(x)} \ket{x} \otimes \ket{-}
+$$
+
+**Interfere.** Apply a Hadamard to every input again. The amplitude of the all-zero input becomes
+
+$$
+\frac{1}{2^n} \sum_{x} (-1)^{f(x)} = \begin{cases} \pm 1 & f \text{ constant} \\ 0 & f \text{ balanced} \end{cases}
+$$
+
+If $f$ is constant every term has the same sign and they add up: the inputs always measure as all zeros. If it is balanced, half the terms cancel the other half and all zeros never appears.
+
+**Read.** Measure the inputs. All zeros means constant; anything else means balanced.
+
+## Running it
+
+Here is the whole algorithm for three input bits, with four oracles. A final Hadamard on the helper returns it from $\ket{-}$ to $\ket{1}$, so every shot gives the same answer.
+
+```python
+import qsengine
+
+N = 3  # input qubits; qubit N is the helper
+
+
+def deutsch_jozsa(oracle):
+    qc = qsengine.QuantumCircuit(N + 1)
+    qc.x(N)                  # helper starts in |1>
+    for q in range(N + 1):
+        qc.h(q)              # superposition of every input
+    oracle(qc)               # one call to f
+    for q in range(N + 1):
+        qc.h(q)              # interfere
+    return qc.run(shots=1000, seed=11)
+
+
+def constant_zero(qc):       # f(x) = 0 for every x
+    pass
+
+
+def constant_one(qc):        # f(x) = 1 for every x
+    qc.x(N)
+
+
+def parity(qc):              # f(x) = x0 xor x1 xor x2
+    for q in range(N):
+        qc.cx(q, N)
+
+
+def middle_bit(qc):          # f(x) = x1
+    qc.cx(1, N)
+
+
+for oracle in [constant_zero, constant_one, parity, middle_bit]:
+    print(oracle.__name__, deutsch_jozsa(oracle))
+```
+
+<Output
+  printed={`constant_zero {'1000': 1000}
+constant_one {'1000': 1000}
+parity {'1111': 1000}
+middle_bit {'1010': 1000}`}
+  caption="Every shot of every run gives one bitstring: no sampling noise, the answer is certain."
+/>
+
+## Reading the result
+
+The leftmost digit is the helper (qubit 3), which is always 1. The other three are the inputs, qubit 0 on the right:
+
+- Both constant oracles give inputs `000`: constant.
+- The parity oracle gives `111` and the middle-bit oracle gives `010`: not all zeros, so balanced.
+
+A balanced result also names the inputs the function depends on: parity uses all three bits and lights up all three, the middle-bit function lights up only qubit 1.
+
+## Where next
+
+Each oracle was called once, against five calls a classical program would need in the worst case for three bits. The gap grows exponentially with $n$. Try the program with a larger `N`, or write your own balanced oracle; the [gates page](/docs/gates/) lists everything you can use.

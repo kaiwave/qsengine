@@ -25,7 +25,7 @@ print(qc.run(shots=1000, seed=1))   # {'00': 513, '11': 487}
 - **Fast where it counts.** Small circuits run on the CPU with almost no per-call overhead; from 14 qubits up, the GPU takes over. On a 22-qubit benchmark qsengine's GPU backend is about 5 times faster than Qiskit Aer.
 - **Any GPU, nothing to install.** The GPU backend uses [wgpu](https://wgpu.rs), so it runs on NVIDIA, AMD, Intel and Apple GPUs through Vulkan, DirectX 12 or Metal. No CUDA, no vendor toolkit.
 - **Works everywhere.** Without a usable GPU the same code runs on the CPU, in full 64-bit precision.
-- **Small, plain API.** One class, eleven gates, three ways to get a result. Mistakes raise a normal Python `ValueError` on the line that made them.
+- **Small, plain API.** One class, nineteen gates plus any 2x2 unitary, three ways to get a result. Mistakes raise a normal Python `ValueError` on the line that made them.
 - **Built to learn with.** The website walks from bra-ket notation to a complete Deutsch-Jozsa run, and every example on it is real qsengine output.
 
 ## Install
@@ -49,15 +49,17 @@ qc.cx(0, 1)
 qc.cx(1, 2)
 
 qc.run(shots=1000)          # measurement counts: {'000': ..., '111': ...}
-qc.probabilities()          # exact probabilities of all 8 basis states
-qc.statevector()            # exact complex amplitudes
+qc.probabilities()          # exact probabilities of all 8 basis states (NumPy array)
+qc.statevector()            # exact complex amplitudes (NumPy array)
 ```
 
 | Gates | Methods |
 | --- | --- |
-| Single qubit | `x`, `y`, `z`, `h`, `s`, `t` |
-| Rotations (radians) | `rx(q, theta)`, `ry(q, theta)`, `rz(q, theta)` |
-| Two qubit | `cx(control, target)`, `cz(control, target)` |
+| Single qubit | `x`, `y`, `z`, `h`, `s`, `sdg`, `t`, `tdg` |
+| Angles (radians) | `rx(q, theta)`, `ry(q, theta)`, `rz(q, theta)`, `p(q, lam)`, `u(q, theta, phi, lam)` |
+| Two qubit | `cx(control, target)`, `cz(control, target)`, `cp(control, target, lam)`, `crz(control, target, theta)`, `swap(q1, q2)` |
+| Three qubit | `ccx(control1, control2, target)` |
+| Any 2x2 unitary | `unitary(matrix, target, controls=[])` |
 
 Bitstrings put **qubit 0 on the right**, the same convention as Qiskit. Pass `seed` to `run()` for repeatable counts.
 
@@ -91,7 +93,7 @@ Below 14 qubits the CPU backend is 7 to 60 times faster than Aer; from 14 qubits
 
 ## Limitations
 
-Version 1.0 measures every qubit at the end of the circuit. There is no SWAP gate and no mid-circuit measurement yet, so algorithms such as teleportation that branch on a measurement are not possible. A register holds at most 30 qubits (16 GiB of memory).
+Version 1.0 measures every qubit at the end of the circuit. There is no mid-circuit measurement yet, so algorithms such as teleportation that branch on a measurement are not possible. A register holds at most 30 qubits (16 GiB of memory).
 
 ## Building from source
 
@@ -123,6 +125,8 @@ npm install
 npm run dev                     # local preview
 npm run build                   # static site in site/out/
 ```
+
+Docs pages are Markdown (`site/app/docs/**/page.mdx`) with `$maths$`, tables and fenced code; `<Output printed="..." />` shows what a snippet prints. To add a page, create its `page.mdx` and list it in `DOCS` in `site/app/content.js`, which drives the sidebar and the previous/next links.
 
 ## Project layout
 

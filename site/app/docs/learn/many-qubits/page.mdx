@@ -1,0 +1,77 @@
+export const metadata = { title: "Many qubits" };
+
+# Many qubits
+
+Two qubits do not have 2 amplitudes each; together they have 4. Every extra qubit doubles the count, and that doubling is both the power of quantum computing and the reason simulators run out of memory.
+
+## The basis states
+
+Two qubits have four basis states, one for each pair of classical values:
+
+$$
+\ket{00},\ \ket{01},\ \ket{10},\ \ket{11}
+$$
+
+and a general state is a combination of all four:
+
+$$
+\ket{\psi} = a_{00}\ket{00} + a_{01}\ket{01} + a_{10}\ket{10} + a_{11}\ket{11}, \qquad \sum |a|^2 = 1
+$$
+
+With $n$ qubits there are $2^n$ basis states and $2^n$ amplitudes. qsengine stores each as two 64-bit numbers, 16 bytes, so 20 qubits take 16 MiB and 30 take 16 GiB.
+
+## Combining qubits: the tensor product
+
+When qubits are independent, the joint state is their *tensor product*, written $\otimes$. Each amplitude of the result is a product of one amplitude from each qubit:
+
+$$
+(\alpha\ket{0} + \beta\ket{1}) \otimes (\gamma\ket{0} + \delta\ket{1}) = \alpha\gamma\ket{00} + \alpha\delta\ket{01} + \beta\gamma\ket{10} + \beta\delta\ket{11}
+$$
+
+A Hadamard on each of two qubits gives every basis state the same amplitude, $\tfrac12$:
+
+```python
+import qsengine
+
+qc = qsengine.QuantumCircuit(2)
+qc.h(0)
+qc.h(1)
+
+print(qc.probabilities())
+print(qc.run(shots=1000, seed=5))
+```
+
+{/* taste-skill-ignore: real output, basis states */}
+<Output
+  printed={`[0.25 0.25 0.25 0.25]
+{'10': 262, '00': 235, '11': 245, '01': 258}`}
+  rows={[["00", 235, 1000], ["01", 258, 1000], ["10", 262, 1000], ["11", 245, 1000]]}
+  caption="Four outcomes, each about a quarter of the time: two independent coin flips."
+/>
+
+## Which bit is which
+
+In $\ket{01}$, qsengine reads the rightmost digit as qubit 0, like Qiskit. So flipping qubit 0 of two gives $\ket{01}$, which is basis index 1:
+
+```python
+qc = qsengine.QuantumCircuit(2)
+qc.x(0)
+
+print(qc.statevector())
+print(qc.run(shots=100, seed=0))
+```
+
+{/* taste-skill-ignore: real output */}
+<Output
+  printed={`[0.+0.j 1.+0.j 0.+0.j 0.+0.j]
+{'01': 100}`}
+  caption="Amplitude 1 at index 1, and every shot reads 01."
+/>
+
+[Running circuits](/docs/running/#bit-order) has the same rule for the arrays qsengine returns.
+
+## Gates on one qubit of many
+
+A single-qubit gate on qubit $k$ acts as the tensor product of that gate with the identity on every other qubit. qsengine never builds that $2^n \times 2^n$ matrix: it updates the amplitudes in pairs, which is why it stays fast at 20 qubits and beyond.
+
+Not every two-qubit state can be written as a tensor product. The ones that cannot are [entangled](/docs/learn/entanglement/).

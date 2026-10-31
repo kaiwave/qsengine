@@ -4,7 +4,10 @@ Bit order: qubit 0 is the rightmost character of every bitstring and bit 0 of
 every basis index, the same convention as Qiskit.
 """
 
-from typing import Literal, Optional
+from typing import Literal, Optional, Sequence, Union
+
+import numpy as np
+import numpy.typing as npt
 
 __version__: str
 
@@ -29,17 +32,36 @@ class QuantumCircuit:
     def rx(self, qubit: int, theta: float) -> None: ...
     def ry(self, qubit: int, theta: float) -> None: ...
     def rz(self, qubit: int, theta: float) -> None: ...
+    def sdg(self, qubit: int) -> None: ...
+    def tdg(self, qubit: int) -> None: ...
+    def p(self, qubit: int, lam: float) -> None: ...
+    def u(self, qubit: int, theta: float, phi: float, lam: float) -> None: ...
 
     # Two-qubit gates
     def cx(self, control: int, target: int) -> None: ...
     def cz(self, control: int, target: int) -> None: ...
+    def cp(self, control: int, target: int, lam: float) -> None: ...
+    def crz(self, control: int, target: int, theta: float) -> None: ...
+    def swap(self, qubit1: int, qubit2: int) -> None: ...
+
+    # Three-qubit gates
+    def ccx(self, control1: int, control2: int, target: int) -> None: ...
+
+    # Any 2x2 unitary, optionally controlled
+    def unitary(
+        self,
+        matrix: Union[Sequence[Sequence[complex]], npt.ArrayLike],
+        target: int,
+        controls: Sequence[int] = ...,
+    ) -> None:
+        """Apply a 2x2 unitary to `target`; raises ValueError if it is not unitary."""
 
     # Execution
     def run(
         self, shots: int = 1024, seed: Optional[int] = None, backend: Backend = "auto"
     ) -> dict[str, int]:
         """Measure all qubits `shots` times; returns {bitstring: count}."""
-    def statevector(self, backend: Backend = "auto") -> list[complex]:
+    def statevector(self, backend: Backend = "auto") -> npt.NDArray[np.complex128]:
         """Exact final amplitudes, length 2**num_qubits."""
-    def probabilities(self, backend: Backend = "auto") -> list[float]:
+    def probabilities(self, backend: Backend = "auto") -> npt.NDArray[np.float64]:
         """Exact final basis-state probabilities, length 2**num_qubits."""
