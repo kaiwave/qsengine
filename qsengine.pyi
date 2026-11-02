@@ -21,6 +21,8 @@ class QuantumCircuit:
     def num_qubits(self) -> int: ...
     def __len__(self) -> int:
         """Number of gates recorded so far."""
+    def __str__(self) -> str:
+        """Text drawing of the circuit, one wire per qubit: `print(qc)`."""
 
     # Single-qubit gates
     def x(self, qubit: int) -> None: ...

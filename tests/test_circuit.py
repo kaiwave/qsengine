@@ -259,7 +259,18 @@ def test_invalid_input_raises_value_error():
         qc.run(backend="tpu")
     with pytest.raises(ValueError, match="maximum"):
         qsengine.QuantumCircuit(64)
+    with pytest.raises(ValueError, match="finite"):
+        qc.rx(0, float("nan"))
+    with pytest.raises(ValueError, match="finite"):
+        qc.cp(0, 1, float("inf"))
     assert len(qc) == 0  # failed gates were not recorded
+
+
+def test_print_draws_the_circuit():
+    qc = qsengine.QuantumCircuit(2)
+    qc.h(0)
+    qc.cx(0, 1)
+    assert str(qc) == "q0: ──H──●─\n         │\nq1: ─────X─"
 
 
 def test_repr_and_len():

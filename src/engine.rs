@@ -35,7 +35,13 @@ impl QuantumState {
         if num_qubits > MAX_QUBITS {
             return Err(QsError::TooManyQubits { requested: num_qubits, max: MAX_QUBITS });
         }
-        let mut amplitudes = vec![Complex64::new(0.0, 0.0); 1 << num_qubits];
+        // Reserve fallibly: a failed `vec!` aborts the process, which kills the Python interpreter.
+        let len = 1usize << num_qubits;
+        let mut amplitudes = Vec::new();
+        amplitudes
+            .try_reserve_exact(len)
+            .map_err(|_| QsError::OutOfMemory { bytes: len * size_of::<Complex64>() })?;
+        amplitudes.resize(len, Complex64::new(0.0, 0.0));
         amplitudes[0] = Complex64::new(1.0, 0.0);
         Ok(Self { num_qubits, amplitudes })
     }
@@ -111,6 +117,10 @@ impl QuantumBackend for QuantumState {
 
     fn amplitudes(&self) -> Vec<Complex64> {
         self.amplitudes.clone()
+    }
+
+    fn into_amplitudes(self: Box<Self>) -> Vec<Complex64> {
+        self.amplitudes
     }
 
     fn probabilities(&self) -> Vec<f64> {

@@ -48,6 +48,7 @@ qc.h(0)
 qc.cx(0, 1)
 qc.cx(1, 2)
 
+print(qc)                   # text drawing, one wire per qubit
 qc.run(shots=1000)          # measurement counts: {'000': ..., '111': ...}
 qc.probabilities()          # exact probabilities of all 8 basis states (NumPy array)
 qc.statevector()            # exact complex amplitudes (NumPy array)

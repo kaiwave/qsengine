@@ -11,8 +11,8 @@
 
 use crate::{BackendKind, QsError, QuantumCircuit, format_bitstring};
 use num_complex::Complex64;
-use numpy::{PyArray1, ToPyArray};
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use numpy::{IntoPyArray, PyArray1};
+use pyo3::exceptions::{PyMemoryError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -23,6 +23,7 @@ impl From<QsError> for PyErr {
     fn from(e: QsError) -> PyErr {
         match e {
             QsError::Gpu(_) => PyRuntimeError::new_err(e.to_string()),
+            QsError::OutOfMemory { .. } => PyMemoryError::new_err(e.to_string()),
             _ => PyValueError::new_err(e.to_string()),
         }
     }
@@ -66,6 +67,11 @@ impl PyQuantumCircuit {
     /// Number of gates recorded so far.
     fn __len__(&self) -> usize {
         self.inner.instructions().len()
+    }
+
+    /// Text drawing of the circuit, one wire per qubit: `print(qc)`.
+    fn __str__(&self) -> String {
+        self.inner.to_string()
     }
 
     fn __repr__(&self) -> String {
@@ -156,7 +162,8 @@ impl PyQuantumCircuit {
         let kind = parse_backend(backend)?;
         let circuit = self.inner.clone();
         let amps = py.detach(move || circuit.statevector(kind))?;
-        Ok(amps.to_pyarray(py))
+        // into_pyarray hands NumPy the Rust buffer itself, so no third copy of the state.
+        Ok(amps.into_pyarray(py))
     }
 
     /// Exact probability of each of the 2**n basis states after the circuit,
@@ -166,7 +173,7 @@ impl PyQuantumCircuit {
         let kind = parse_backend(backend)?;
         let circuit = self.inner.clone();
         let probs = py.detach(move || circuit.probabilities(kind))?;
-        Ok(probs.to_pyarray(py))
+        Ok(probs.into_pyarray(py))
     }
 }
 

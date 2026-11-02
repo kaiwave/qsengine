@@ -2,6 +2,19 @@ export const metadata = { title: "Release notes" };
 
 # Release notes
 
+## Version 1.0.2
+
+Circuit drawings, and two fixes for silent failures.
+
+### New
+
+- `print(qc)` draws the circuit as text, one wire per qubit. See [Drawing a circuit](/docs/running/#drawing-a-circuit).
+
+### Fixes
+
+- An angle that is NaN or infinite, for example `qc.rx(0, float("nan"))`, now raises `ValueError`. Before, it was accepted and `run()` returned all-zero counts.
+- A register too large for memory now raises `MemoryError` instead of closing Python. On the CPU backend `statevector()` also no longer copies the state twice, so it needs a third of the memory it needed before.
+
 ## Version 1.0.1
 
 More gates, and exact results as NumPy arrays.

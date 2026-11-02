@@ -10,6 +10,24 @@ A circuit can give you three kinds of result. Each call simulates the whole circ
 | `probabilities(backend)` | NumPy array of `float64` | The exact probability of each basis state |
 | `statevector(backend)` | NumPy array of `complex128` | The exact amplitudes |
 
+## Drawing a circuit
+
+`print(qc)` draws the gates recorded so far, one wire per qubit with qubit 0 on top. `●` marks a control qubit and `×` the two ends of a swap. Drawing does not run the circuit.
+
+```python
+qc = qsengine.QuantumCircuit(3)
+qc.h(0)
+qc.cx(0, 1)
+qc.cx(1, 2)
+print(qc)
+```
+
+<Output printed={`q0: ──H──●────
+         │
+q1: ─────X──●─
+            │
+q2: ────────X─`} />
+
 ## Shots and counts
 
 `run()` measures every qubit `shots` times (1024 if you leave it out) and counts the results. Only the counts come back to Python; the state stays in Rust.

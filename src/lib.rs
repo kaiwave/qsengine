@@ -33,7 +33,7 @@
 //! ## Python
 //!
 //! The `python` module wraps [`QuantumCircuit`] as `qsengine.QuantumCircuit`.
-//! Errors map from [`QsError`] to `ValueError` / `RuntimeError`. Build it with
+//! Errors map from [`QsError`] to `ValueError` / `RuntimeError` / `MemoryError`. Build it with
 //! `maturin develop --release` (see the README).
 
 pub mod backend;
@@ -71,6 +71,10 @@ pub enum QsError {
     SizeMismatch { circuit: usize, backend: usize },
     /// A user-supplied gate matrix was not a 2x2 unitary.
     NotUnitary,
+    /// A gate angle (or matrix entry) was NaN or infinite.
+    NonFinite,
+    /// The state vector did not fit in memory.
+    OutOfMemory { bytes: usize },
     /// No usable GPU, or the GPU driver reported an error.
     Gpu(String),
 }
@@ -89,6 +93,10 @@ impl fmt::Display for QsError {
                 write!(f, "circuit has {circuit} qubits but backend has {backend}")
             }
             QsError::NotUnitary => write!(f, "gate matrix must be a 2x2 unitary"),
+            QsError::NonFinite => write!(f, "gate angles must be finite numbers, not NaN or infinity"),
+            QsError::OutOfMemory { bytes } => {
+                write!(f, "not enough memory for the state vector ({:.1} GiB)", *bytes as f64 / (1u64 << 30) as f64)
+            }
             QsError::Gpu(msg) => write!(f, "GPU error: {msg}"),
         }
     }
