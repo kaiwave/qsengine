@@ -8,10 +8,11 @@ const METHODS = [
   ["QuantumCircuit(num_qubits)", "init", "Create an empty circuit on num_qubits qubits, all starting in |0⟩. At most 30.", "Raises ValueError if num_qubits is above 30."],
   ["qc.num_qubits", "num-qubits", "The number of qubits. Read-only.", "Returns int."],
   ["len(qc)", "len", "The number of gates recorded so far.", "Returns int."],
+  ["print(qc), str(qc)", "str", "A text drawing of the circuit, one wire per qubit with qubit 0 on top. ● marks a control, × the ends of a swap.", "Returns str."],
   ["qc.h(q), qc.x(q), qc.y(q), qc.z(q), qc.s(q), qc.sdg(q), qc.t(q), qc.tdg(q)", "single", "Record a single-qubit gate on qubit q.", "Raises ValueError if q is out of range."],
-  ["qc.rx(q, theta), qc.ry(q, theta), qc.rz(q, theta), qc.p(q, lam)", "rotations", "Record a rotation of theta radians about the X, Y or Z axis, or a phase of lam radians.", "Raises ValueError if q is out of range."],
-  ["qc.u(q, theta, phi, lam)", "u", "Record the general single-qubit gate U, in the same convention as Qiskit.", "Raises ValueError if q is out of range."],
-  ["qc.cx(control, target), qc.cz(control, target), qc.cp(control, target, lam), qc.crz(control, target, theta)", "two-qubit", "Record a CNOT, controlled-Z, controlled-phase or controlled-RZ gate.", "Raises ValueError if a qubit is out of range or control equals target."],
+  ["qc.rx(q, theta), qc.ry(q, theta), qc.rz(q, theta), qc.p(q, lam)", "rotations", "Record a rotation of theta radians about the X, Y or Z axis, or a phase of lam radians.", "Raises ValueError if q is out of range or the angle is NaN or infinite."],
+  ["qc.u(q, theta, phi, lam)", "u", "Record the general single-qubit gate U, in the same convention as Qiskit.", "Raises ValueError if q is out of range or an angle is NaN or infinite."],
+  ["qc.cx(control, target), qc.cz(control, target), qc.cp(control, target, lam), qc.crz(control, target, theta)", "two-qubit", "Record a CNOT, controlled-Z, controlled-phase or controlled-RZ gate.", "Raises ValueError if a qubit is out of range, control equals target, or an angle is NaN or infinite."],
   ["qc.swap(qubit1, qubit2)", "swap", "Record a SWAP, as three CNOTs.", "Raises ValueError if a qubit is out of range or the two are equal."],
   ["qc.ccx(control1, control2, target)", "ccx", "Record a Toffoli gate.", "Raises ValueError if a qubit is out of range or used twice."],
   ["qc.unitary(matrix, target, controls=[])", "unitary", "Record any 2x2 unitary matrix (nested lists or a NumPy array) on target, applied only where every qubit in controls is |1⟩.", "Raises ValueError if the matrix is not 2x2 or not unitary, or a qubit is out of range or used twice."],
@@ -25,11 +26,13 @@ const ERRORS = [
   ["QuantumCircuit(31)", "ValueError: requested 31 qubits, maximum is 30"],
   ["qc.h(2) on 2 qubits", "ValueError: qubit 2 out of range for a 2-qubit register"],
   ["qc.cz(0, 0)", "ValueError: qubit 0 used more than once in one gate"],
+  ['qc.rx(0, float("nan"))', "ValueError: gate angles must be finite numbers, not NaN or infinity"],
   ["qc.unitary([[1, 1], [0, 1]], 0)", "ValueError: gate matrix must be a 2x2 unitary"],
   ["qc.unitary(numpy.eye(4), 0)", "ValueError: matrix must be 2x2"],
   ['qc.run(backend="tpu")', 'ValueError: unknown backend "tpu"; expected "auto", "cpu" or "gpu"'],
   ["qc.x(-1)", "OverflowError: can't convert negative int to unsigned"],
   ['backend="gpu" with no usable GPU', "RuntimeError, with the reason from the driver"],
+  ["A state too large for memory", "MemoryError: not enough memory for the state vector (16.0 GiB)"],
 ];
 
 export default function Api() {

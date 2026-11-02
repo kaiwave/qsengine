@@ -39,6 +39,12 @@ pub trait QuantumBackend {
     /// Copy of all `2^n` amplitudes, in basis-index order.
     fn amplitudes(&self) -> Vec<Complex64>;
 
+    /// All `2^n` amplitudes, consuming the backend. Backends that already hold
+    /// them in host memory override this to hand the vector over without a copy.
+    fn into_amplitudes(self: Box<Self>) -> Vec<Complex64> {
+        self.amplitudes()
+    }
+
     /// Replace the state with the basis state `|index>` (amplitude 1 there, 0 elsewhere).
     fn collapse_to(&mut self, index: usize);
 
@@ -63,6 +69,7 @@ pub trait QuantumBackend {
         gate: &Gate,
     ) -> Result<()> {
         let mask = control_mask(self.num_qubits(), controls, target)?;
+        check_finite(gate)?;
         self.apply_gate_kernel(mask, target, gate);
         Ok(())
     }
@@ -122,7 +129,7 @@ pub trait QuantumBackend {
     /// Picks basis state `i` with probability `|amp_i|^2`, collapses the state
     /// to `|i>`, and returns `i`. Use [`crate::format_bitstring`] to print it.
     fn measure(&mut self, rng: &mut dyn RngCore) -> usize {
-        let cumulative = cumulative_probabilities(&self.probabilities());
+        let cumulative = cumulative_probabilities(self.probabilities());
         let outcome = sample_index(&cumulative, rng);
         // Global phase is unobservable, so collapsing to amplitude exactly 1 is valid.
         self.collapse_to(outcome);
@@ -134,7 +141,7 @@ pub trait QuantumBackend {
     /// Returns `basis index -> number of times seen`. This is how real circuits
     /// are run: prepare once, sample many times. Costs `O(2^n + shots * n)`.
     fn sample(&self, shots: usize, rng: &mut dyn RngCore) -> HashMap<usize, usize> {
-        let cumulative = cumulative_probabilities(&self.probabilities());
+        let cumulative = cumulative_probabilities(self.probabilities());
         let mut counts = HashMap::new();
         for _ in 0..shots {
             *counts.entry(sample_index(&cumulative, rng)).or_insert(0) += 1;
@@ -165,15 +172,20 @@ pub fn control_mask(num_qubits: usize, controls: &[usize], target: usize) -> Res
     Ok(mask)
 }
 
-/// Running sum of `probs`: `out[i] = probs[0] + ... + probs[i]`.
-fn cumulative_probabilities(probs: &[f64]) -> Vec<f64> {
+/// Fail if any entry of `gate` is NaN or infinite, e.g. from `rx(q, float("nan"))`.
+/// Such a gate turns the whole state into NaN, which sampling would silently read as |0...0>.
+pub fn check_finite(gate: &Gate) -> Result<()> {
+    if gate.as_flattened().iter().all(|z| z.is_finite()) { Ok(()) } else { Err(QsError::NonFinite) }
+}
+
+/// Running sum of `probs`, in place (no second 2^n buffer): `out[i] = probs[0] + ... + probs[i]`.
+fn cumulative_probabilities(mut probs: Vec<f64>) -> Vec<f64> {
+    let mut acc = 0.0;
+    for p in &mut probs {
+        acc += *p;
+        *p = acc;
+    }
     probs
-        .iter()
-        .scan(0.0, |acc, p| {
-            *acc += p;
-            Some(*acc)
-        })
-        .collect()
 }
 
 /// Weighted random pick from a cumulative distribution using binary search.
@@ -288,5 +300,7 @@ pub(crate) mod conformance {
         assert_eq!(s.h(2), Err(QsError::QubitOutOfRange { qubit: 2, num_qubits: 2 }));
         assert_eq!(s.cx(1, 1), Err(QsError::DuplicateQubit(1)));
         assert_eq!(s.cx(5, 0), Err(QsError::QubitOutOfRange { qubit: 5, num_qubits: 2 }));
+        assert_eq!(s.rx(0, f64::NAN), Err(QsError::NonFinite));
+        assert_eq!(s.rz(0, f64::INFINITY), Err(QsError::NonFinite));
     }
 }
