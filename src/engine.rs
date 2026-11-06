@@ -128,6 +128,21 @@ impl QuantumBackend for QuantumState {
         self.amplitudes.par_iter().map(|a| a.norm_sqr()).collect()
     }
 
+    fn probability_of_one(&self, qubit: usize) -> f64 {
+        // Fixed-size chunks summed in order, so the result (and seeded runs) never
+        // depend on how Rayon happened to split the work.
+        let partial: Vec<f64> = self
+            .amplitudes
+            .par_chunks(MIN_PARALLEL_LEN)
+            .enumerate()
+            .map(|(c, chunk)| {
+                let base = c * MIN_PARALLEL_LEN;
+                chunk.iter().enumerate().filter(|(j, _)| (base + j) >> qubit & 1 == 1).map(|(_, a)| a.norm_sqr()).sum()
+            })
+            .collect();
+        partial.iter().sum()
+    }
+
     fn collapse_to(&mut self, index: usize) {
         self.amplitudes.fill(Complex64::new(0.0, 0.0));
         self.amplitudes[index] = Complex64::new(1.0, 0.0);

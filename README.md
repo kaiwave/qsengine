@@ -25,7 +25,7 @@ print(qc.run(shots=1000, seed=1))   # {'00': 513, '11': 487}
 - **Fast where it counts.** Small circuits run on the CPU with almost no per-call overhead; from 14 qubits up, the GPU takes over. On a 22-qubit benchmark qsengine's GPU backend is about 5 times faster than Qiskit Aer.
 - **Any GPU, nothing to install.** The GPU backend uses [wgpu](https://wgpu.rs), so it runs on NVIDIA, AMD, Intel and Apple GPUs through Vulkan, DirectX 12 or Metal. No CUDA, no vendor toolkit.
 - **Works everywhere.** Without a usable GPU the same code runs on the CPU, in full 64-bit precision.
-- **Small, plain API.** One class, nineteen gates plus any 2x2 unitary, three ways to get a result. Mistakes raise a normal Python `ValueError` on the line that made them.
+- **Small, plain API.** One class, nineteen gates plus any 2x2 unitary, mid-circuit measurement with classically controlled gates, and four ways to get a result: counts, probabilities, amplitudes and Pauli expectation values. Mistakes raise a normal Python `ValueError` on the line that made them.
 - **Built to learn with.** The website walks from bra-ket notation to a complete Deutsch-Jozsa run, and every example on it is real qsengine output.
 
 ## Install
@@ -52,7 +52,30 @@ print(qc)                   # text drawing, one wire per qubit
 qc.run(shots=1000)          # measurement counts: {'000': ..., '111': ...}
 qc.probabilities()          # exact probabilities of all 8 basis states (NumPy array)
 qc.statevector()            # exact complex amplitudes (NumPy array)
+qc.expectation("ZZI")       # expectation value of a Pauli string: 1.0
 ```
+
+### Measuring part-way
+
+Give the circuit classical bits, measure into them at any point, and make later gates depend on them. Teleportation in full:
+
+```python
+qc = qsengine.QuantumCircuit(3, 3)  # 3 qubits, 3 classical bits
+qc.x(0)                             # the state to teleport: |1>
+qc.h(1)
+qc.cx(1, 2)
+qc.cx(0, 1)
+qc.h(0)
+qc.measure([0, 1], [0, 1])
+with qc.if_test(1, 1):              # if classical bit 1 is 1
+    qc.x(2)
+with qc.if_test(0, 1):
+    qc.z(2)
+qc.measure(2, 2)
+print(qc.run(shots=1000, seed=1))   # bit 2 (leftmost) is 1 in every shot
+```
+
+`qc.reset(q)` puts a qubit back to |0⟩ so it can be reused. When a circuit measures, `run()` counts the classical bits instead of the qubits.
 
 | Gates | Methods |
 | --- | --- |
@@ -61,6 +84,7 @@ qc.statevector()            # exact complex amplitudes (NumPy array)
 | Two qubit | `cx(control, target)`, `cz(control, target)`, `cp(control, target, lam)`, `crz(control, target, theta)`, `swap(q1, q2)` |
 | Three qubit | `ccx(control1, control2, target)` |
 | Any 2x2 unitary | `unitary(matrix, target, controls=[])` |
+| Measurement | `measure(qubit, clbit)`, `reset(qubit)`, `with if_test(clbits, value):` |
 
 Bitstrings put **qubit 0 on the right**, the same convention as Qiskit. Pass `seed` to `run()` for repeatable counts.
 
@@ -78,23 +102,23 @@ The full API, every error message and a guide to each topic are in the [document
 
 ## Performance
 
-Each run simulates 5 layers of (H on every qubit, RZ on every qubit, CNOT chain) and samples 1000 shots. Best of several runs on a Ryzen 5 5500 with a Radeon RX 6600, Windows 10, Qiskit Aer 0.18.2.
+Each run simulates 5 layers of (H on every qubit, RZ on every qubit, CNOT chain) and samples 1000 shots. Best of at least three runs on a Ryzen 5 5500 with a Radeon RX 6600, Windows 10, Qiskit Aer 0.18.2.
 
 ![qsengine against pure Python and Qiskit Aer](https://raw.githubusercontent.com/kaiwave/qsengine/main/benchmarks/benchmark.png)
 
 | Qubits | Pure Python | qsengine CPU | qsengine GPU | Qiskit Aer |
 | ---: | ---: | ---: | ---: | ---: |
-| 6 | 2.2 ms | **0.11 ms** | 1.3 ms | 3.7 ms |
-| 10 | 30 ms | **0.30 ms** | 1.2 ms | 5.8 ms |
-| 14 | 740 ms | 2.4 ms | **1.3 ms** | 11.7 ms |
-| 18 | 16.2 s | 25 ms | **4.9 ms** | 19 ms |
-| 22 | not run | 1.03 s | **70 ms** | 367 ms |
+| 6 | 2.2 ms | **0.11 ms** | 1.4 ms | 3.4 ms |
+| 10 | 31 ms | **0.29 ms** | 1.3 ms | 6.1 ms |
+| 14 | 713 ms | 2.2 ms | **1.5 ms** | 11.7 ms |
+| 18 | 17.7 s | 21 ms | **6.2 ms** | 29 ms |
+| 22 | not run | 1.17 s | **77 ms** | 431 ms |
 
-Below 14 qubits the CPU backend is 7 to 60 times faster than Aer; from 14 qubits the GPU backend is 3 to 9 times faster. Above about 17 qubits the CPU backend is slower than Aer, which fuses multi-qubit gates. These are one machine's numbers: reproduce them with [`benchmarks/benchmark.py`](benchmarks/benchmark.py).
+Below 14 qubits the CPU backend is 8 to 50 times faster than Aer; from 14 qubits the GPU backend is 3 to 8 times faster. The CPU backend stays ahead of Aer up to 19 qubits and falls behind from 20, where Aer fuses multi-qubit gates. These are one machine's numbers: reproduce them with [`benchmarks/benchmark.py`](benchmarks/benchmark.py).
 
 ## Limitations
 
-Version 1.0 measures every qubit at the end of the circuit. There is no mid-circuit measurement yet, so algorithms such as teleportation that branch on a measurement are not possible. A register holds at most 30 qubits (16 GiB of memory).
+A register holds at most 30 qubits (16 GiB of memory) and 64 classical bits. A circuit that measures part-way is simulated once per shot, so it costs `shots` times as much as one that only measures at the end. Exact results (`statevector()`, `probabilities()`, `expectation()`) need a circuit that does not measure or reset before a later gate.
 
 ## Building from source
 
@@ -116,6 +140,8 @@ cargo test --release            # Rust tests (GPU tests skip without a GPU)
 pytest                          # Python tests, checked against a NumPy reference
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how the pieces fit together and how to add a gate.
+
 To build without the GPU backend, use `cargo build --no-default-features` for Rust.
 
 The website lives in `site/` (Next.js, static export, maths rendered with KaTeX at build time):
@@ -132,12 +158,13 @@ Docs pages are Markdown (`site/app/docs/**/page.mdx`) with `$maths$`, tables and
 ## Project layout
 
 ```text
-src/                Rust core and Python bindings
+src/                Rust core: all simulation
   engine.rs           CPU backend (64-bit, multithreaded with Rayon)
-  gpu.rs              GPU backend (wgpu compute shader in shaders/)
-  circuit.rs          QuantumCircuit: records gates, fuses them, runs them
-  python.rs           PyO3 bindings for the qsengine Python module
-qsengine.pyi        Type hints for editors
+  gpu.rs              GPU backend (wgpu compute shaders in shaders/)
+  circuit.rs          QuantumCircuit: records operations, fuses gates, runs them
+  pauli.rs            Pauli-string expectation values
+  python.rs           PyO3 bindings, built as qsengine._core
+python/qsengine/    The Python package: wraps _core, adds the drawer and if_test, type hints
 tests/              Python tests against NumPy
 benchmarks/         Benchmark script, results and plot
 site/               Documentation and learning website

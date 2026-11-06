@@ -1,0 +1,23 @@
+name: Feature request
+description: A gate, method or example you would like qsengine to have.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you want to do
+      description: The circuit or algorithm you are building, and where qsengine gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What it could look like
+      description: The API you have in mind, for example the method call and what it returns.
+      render: python
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to open a pull request for this (see CONTRIBUTING.md).

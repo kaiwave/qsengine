@@ -2,6 +2,29 @@ export const metadata = { title: "Release notes" };
 
 # Release notes
 
+## Version 1.1.0
+
+Mid-circuit measurement, classical bits and expectation values. Allows teleportation, error correction, VQE and QAOA.
+
+### Measurement and classical bits
+
+- `QuantumCircuit(num_qubits, num_clbits)` gives a circuit classical bits.
+- `measure(qubit, clbit)` measures a qubit at any point, and `reset(qubit)` returns it to |0⟩.
+- Gates inside `with qc.if_test(clbits, value):` run only when the classical bits match.
+- When a circuit measures, `run()` counts its classical bits. A circuit that measures part-way is simulated once per shot. One that only measures at the end still runs once and is sampled, as fast as before.
+- The GPU backend measures single qubits with a new reduction shader. Each mid-circuit measurement waits for the GPU, so `auto` keeps such circuits on the CPU below 20 qubits.
+
+### Expectation values
+
+- `expectation("ZZI")` returns the expectation value of a Pauli string; `expectation([...])` returns one for each string, from a single simulation.
+
+### Other changes
+
+- `print(qc)` draws measurements, resets and conditions. A swap now counts as one operation in `len(qc)`, not three.
+- Recording a gate is about 2.3 times faster than in 1.0.2.
+- The Python package is now plain Python around a compiled core (`qsengine._core`). `import qsengine` works as before.
+- Release builds use link-time optimisation, which keeps CPU simulation speed steady from build to build.
+
 ## Version 1.0.2
 
 Circuit drawings, and two fixes for silent failures.

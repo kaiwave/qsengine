@@ -1,0 +1,38 @@
+name: Bug report
+description: qsengine gave a wrong result, crashed, or raised an error it should not have.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: code
+    attributes:
+      label: Code that shows the problem
+      description: The smallest circuit that still shows it.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+      description: Paste the full output or traceback.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: qsengine version
+      description: The output of `python -c "import qsengine; print(qsengine.__version__)"`
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system, Python version and GPU
+      placeholder: Windows 11, Python 3.12, Radeon RX 6600 (or "no GPU")
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options: ["auto (default)", "cpu", "gpu", "not sure"]

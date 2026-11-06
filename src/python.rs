@@ -3,12 +3,17 @@
 //! This file is a thin translation layer: it converts Python arguments into
 //! Rust calls on [`QuantumCircuit`] and converts results back. No simulation
 //! logic lives here. The Python-facing docs are the docstrings below
-//! (`///` comments become `__doc__`) and the type stub `qsengine.pyi`.
+//! (`///` comments become `__doc__`) and the type stub `python/qsengine/_core.pyi`.
+//!
+//! This builds the private module `qsengine._core`. The public `qsengine` package
+//! (`python/qsengine/`) subclasses its `QuantumCircuit` in plain Python for things
+//! that are not simulation: drawing, `if_test`, and argument conveniences.
 //!
 //! The state vector never crosses into Python while gates are applied. Python
 //! appends instructions, and `run` / `statevector` / `probabilities` execute the
 //! whole circuit in Rust in one call, with the GIL released.
 
+use crate::circuit::{Condition, Instruction};
 use crate::{BackendKind, QsError, QuantumCircuit, format_bitstring};
 use num_complex::Complex64;
 use numpy::{IntoPyArray, PyArray1};
@@ -46,7 +51,7 @@ fn parse_backend(name: &str) -> PyResult<BackendKind> {
 /// Add gates with methods such as `h(0)` and `cx(0, 1)`, then call `run()`
 /// for measurement counts or `statevector()` for the exact final state.
 /// Qubit 0 is the rightmost character of every bitstring.
-#[pyclass(name = "QuantumCircuit", module = "qsengine")]
+#[pyclass(name = "QuantumCircuit", module = "qsengine._core", subclass)]
 struct PyQuantumCircuit {
     inner: QuantumCircuit,
 }
@@ -54,8 +59,15 @@ struct PyQuantumCircuit {
 #[pymethods]
 impl PyQuantumCircuit {
     #[new]
-    fn new(num_qubits: usize) -> PyResult<Self> {
-        Ok(Self { inner: QuantumCircuit::new(num_qubits)? })
+    #[pyo3(signature = (num_qubits, num_clbits = 0))]
+    fn new(num_qubits: usize, num_clbits: usize) -> PyResult<Self> {
+        Ok(Self { inner: QuantumCircuit::with_clbits(num_qubits, num_clbits)? })
+    }
+
+    /// Number of classical bits in the circuit.
+    #[getter]
+    fn num_clbits(&self) -> usize {
+        self.inner.num_clbits()
     }
 
     /// Number of qubits in the circuit.
@@ -64,18 +76,58 @@ impl PyQuantumCircuit {
         self.inner.num_qubits()
     }
 
-    /// Number of gates recorded so far.
+    /// Number of operations (gates, measurements, resets) recorded so far.
     fn __len__(&self) -> usize {
         self.inner.instructions().len()
     }
 
-    /// Text drawing of the circuit, one wire per qubit: `print(qc)`.
-    fn __str__(&self) -> String {
-        self.inner.to_string()
+    fn __repr__(&self) -> String {
+        let clbits = match self.inner.num_clbits() {
+            0 => String::new(),
+            c => format!(", num_clbits={c}"),
+        };
+        format!("QuantumCircuit(num_qubits={}{clbits}, gates={})", self.inner.num_qubits(), self.__len__())
     }
 
-    fn __repr__(&self) -> String {
-        format!("QuantumCircuit(num_qubits={}, gates={})", self.inner.num_qubits(), self.__len__())
+    /// The recorded operations as plain tuples, for the Python drawer:
+    /// `(kind, name, params, controls, targets, condition, clbit)` where `condition`
+    /// is `(mask, value)` or None and `clbit` is set only for measurements.
+    #[allow(clippy::type_complexity)]
+    fn _ops(&self) -> Vec<(&'static str, &'static str, Vec<f64>, Vec<usize>, Vec<usize>, Option<(usize, usize)>, Option<usize>)> {
+        let bits = |mask: usize| (0..usize::BITS as usize).filter(|b| mask >> b & 1 == 1).collect::<Vec<_>>();
+        let cond = |c: &Option<Condition>| c.map(|c| (c.mask, c.value));
+        self.inner
+            .instructions()
+            .iter()
+            .map(|ins| match ins {
+                Instruction::Gate { control_mask, target, label, condition, .. } => {
+                    ("gate", label.name, label.params().to_vec(), bits(*control_mask), vec![*target], cond(condition), None)
+                }
+                Instruction::Swap { a, b, condition } => ("swap", "swap", vec![], vec![], vec![*a, *b], cond(condition), None),
+                Instruction::Measure { qubit, clbit } => ("measure", "measure", vec![], vec![], vec![*qubit], None, Some(*clbit)),
+                Instruction::Reset { qubit } => ("reset", "reset", vec![], vec![], vec![*qubit], None, None),
+            })
+            .collect()
+    }
+
+    /// Measure `qubit` into classical bit `clbit`, part-way through or at the end.
+    fn measure(&mut self, qubit: usize, clbit: usize) -> PyResult<()> {
+        Ok(self.inner.measure(qubit, clbit)?)
+    }
+
+    /// Reset `qubit` to |0>, whatever state it is in.
+    fn reset(&mut self, qubit: usize) -> PyResult<()> {
+        Ok(self.inner.reset(qubit)?)
+    }
+
+    /// Start an `if_test` block; use `with qc.if_test(...)` from the `qsengine` package.
+    fn _set_condition(&mut self, clbits: Vec<usize>, value: usize) -> PyResult<()> {
+        Ok(self.inner.set_condition(&clbits, value)?)
+    }
+
+    /// End an `if_test` block.
+    fn _clear_condition(&mut self) {
+        self.inner.clear_condition()
     }
 
     /// Pauli-X (NOT) on `qubit`.
@@ -134,16 +186,18 @@ impl PyQuantumCircuit {
         Ok(self.inner.unitary(&controls, target, gate)?)
     }
 
-    /// Simulate the circuit and measure every qubit `shots` times.
+    /// Simulate the circuit `shots` times and count the results.
     ///
-    /// Returns a dict mapping bitstrings (qubit 0 rightmost) to counts, e.g.
-    /// `{"00": 507, "11": 517}`. Pass `seed` for reproducible results.
+    /// Returns a dict mapping bitstrings to counts, e.g. `{"00": 507, "11": 517}`.
+    /// If the circuit measures into classical bits, the bitstrings are the
+    /// classical bits (bit 0 rightmost); otherwise every qubit is measured at the
+    /// end (qubit 0 rightmost). Pass `seed` for reproducible results.
     /// `backend` is "auto" (default), "cpu" or "gpu".
     #[pyo3(signature = (shots = 1024, seed = None, backend = "auto"))]
     fn run(&self, py: Python<'_>, shots: usize, seed: Option<u64>, backend: &str) -> PyResult<HashMap<String, usize>> {
         let kind = parse_backend(backend)?;
         let circuit = self.inner.clone();
-        let n = circuit.num_qubits();
+        let n = if circuit.has_measurements() { circuit.num_clbits() } else { circuit.num_qubits() };
         // Release the GIL so other Python threads keep running during the simulation.
         let counts = py.detach(move || {
             let mut rng = match seed {
@@ -175,11 +229,24 @@ impl PyQuantumCircuit {
         let probs = py.detach(move || circuit.probabilities(kind))?;
         Ok(probs.into_pyarray(py))
     }
+
+    /// Expectation value of each Pauli string (e.g. "ZZI", qubit 0 rightmost) in
+    /// the final state, from one simulation, as a NumPy float64 array.
+    #[pyo3(signature = (paulis, backend = "auto"))]
+    fn expectation<'py>(&self, py: Python<'py>, paulis: Vec<String>, backend: &str) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        let kind = parse_backend(backend)?;
+        let circuit = self.inner.clone();
+        let values = py.detach(move || {
+            let refs: Vec<&str> = paulis.iter().map(String::as_str).collect();
+            circuit.expectation(&refs, kind)
+        })?;
+        Ok(values.into_pyarray(py))
+    }
 }
 
-/// qsengine: a fast state-vector quantum simulator with a Rust core.
+/// The compiled core of qsengine. Import `qsengine`, not this module.
 #[pymodule]
-fn qsengine(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyQuantumCircuit>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())

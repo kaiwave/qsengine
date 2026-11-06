@@ -136,6 +136,38 @@ pub trait QuantumBackend {
         outcome
     }
 
+    /// Probability that measuring `qubit` gives 1. Callers validate `qubit`.
+    ///
+    /// This default reads every probability back; backends override it with a
+    /// direct sum (the GPU one runs a reduction shader and reads back one number).
+    fn probability_of_one(&self, qubit: usize) -> f64 {
+        self.probabilities().iter().enumerate().filter(|(i, _)| i >> qubit & 1 == 1).map(|(_, p)| p).sum()
+    }
+
+    /// Measure one qubit and leave the others unmeasured (mid-circuit measurement).
+    ///
+    /// Picks 1 with probability [`probability_of_one`](Self::probability_of_one),
+    /// then keeps only the half of the state that agrees with the outcome and
+    /// renormalises it. The collapse is a (non-unitary) 2x2 matrix, so every
+    /// backend does it with its ordinary gate kernel.
+    fn measure_qubit(&mut self, qubit: usize, rng: &mut dyn RngCore) -> Result<bool> {
+        control_mask(self.num_qubits(), &[], qubit)?;
+        let p1 = self.probability_of_one(qubit).clamp(0.0, 1.0);
+        let one = rng.random::<f64>() < p1;
+        let (o, s) = (Complex64::new(0.0, 0.0), Complex64::new(1.0 / if one { p1 } else { 1.0 - p1 }.sqrt(), 0.0));
+        let keep = if one { [[o, o], [o, s]] } else { [[s, o], [o, o]] };
+        self.apply_gate_kernel(0, qubit, &keep);
+        Ok(one)
+    }
+
+    /// Reset one qubit to |0>: measure it, and flip it back if it gave 1.
+    fn reset_qubit(&mut self, qubit: usize, rng: &mut dyn RngCore) -> Result<()> {
+        if self.measure_qubit(qubit, rng)? {
+            self.apply_gate_kernel(0, qubit, &gates::X);
+        }
+        Ok(())
+    }
+
     /// Simulate `shots` measurements *without* disturbing the state.
     ///
     /// Returns `basis index -> number of times seen`. This is how real circuits
@@ -217,6 +249,7 @@ pub(crate) mod conformance {
         cz_phase(make, tol);
         y_and_rotations(make, tol);
         measurement_collapses(make);
+        qubit_measurement_and_reset(make, tol);
         sampling_matches_probabilities(make);
         validates_inputs(make);
     }
@@ -280,6 +313,33 @@ pub(crate) mod conformance {
         assert!(m == 0 || m == 3, "Bell state can only give 00 or 11");
         // After collapse, measuring again must give the same answer.
         assert_eq!(s.measure(&mut rng), m);
+    }
+
+    fn qubit_measurement_and_reset(make: Make, tol: f64) {
+        let mut rng = StdRng::seed_from_u64(3);
+        // Qubit 0 of a GHZ state on 3 qubits: the other two must follow it, and stay normalised.
+        let mut s = make(3);
+        s.h(0).unwrap();
+        s.cx(0, 1).unwrap();
+        s.cx(1, 2).unwrap();
+        assert!((s.probability_of_one(2) - 0.5).abs() < tol);
+        let one = s.measure_qubit(0, &mut rng).unwrap();
+        let expect = if one { 7 } else { 0 };
+        assert!((s.probabilities()[expect] - 1.0).abs() < tol, "GHZ did not collapse to {expect}");
+        // Reset puts the qubit back to |0> whatever it was.
+        s.reset_qubit(1, &mut rng).unwrap();
+        let p = s.probabilities();
+        assert!((p[if one { 5 } else { 0 }] - 1.0).abs() < tol);
+        // Measuring half of a uniform superposition many times gives about half ones.
+        let ones = (0..400)
+            .filter(|_| {
+                let mut s = make(2);
+                s.h(1).unwrap();
+                s.measure_qubit(1, &mut rng).unwrap()
+            })
+            .count();
+        assert!((150..250).contains(&ones), "got {ones} ones of 400");
+        assert_eq!(s.measure_qubit(3, &mut rng), Err(QsError::QubitOutOfRange { qubit: 3, num_qubits: 3 }));
     }
 
     fn sampling_matches_probabilities(make: Make) {

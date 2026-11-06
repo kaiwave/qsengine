@@ -1,5 +1,5 @@
 // Everything the site says about qsengine, in one place.
-// Every printed output was produced by running the code with qsengine 1.0.2 (re-check them after a release that changes behaviour);
+// Every printed output was produced by running the code with qsengine 1.1.0 (re-check them after a release that changes behaviour);
 // benchmark figures come from benchmarks/results.csv.
 
 // From Cargo.toml, set in next.config.mjs.
@@ -9,18 +9,19 @@ export const REPO = "https://github.com/kaiwave/qsengine";
 export const PYPI = "https://pypi.org/project/qsengine/";
 
 // The documentation, grouped the way the /docs index and the sidebar show it.
+// `key` pages are also listed on the home page.
 export const DOCS = [
   {
     group: "Getting started",
     items: [
-      { href: "/docs/getting-started/", title: "Installation and first circuit", blurb: "Install the wheel, build a Bell state, read the counts." },
-      { href: "/docs/examples/", title: "Examples", blurb: "Complete programs with their real output." },
+      { href: "/docs/getting-started/", key: true, title: "Installation and first circuit", blurb: "Install the wheel, build a Bell state, read the counts." },
+      { href: "/docs/examples/", key: true, title: "Examples", blurb: "Complete programs with their real output." },
     ],
   },
   {
     group: "Quantum physics",
     items: [
-      { href: "/docs/learn/qubits/", title: "Qubits and bra-ket notation", blurb: "What a qubit is and how to write its state." },
+      { href: "/docs/learn/qubits/", key: true, title: "Qubits and bra-ket notation", blurb: "What a qubit is and how to write its state." },
       { href: "/docs/learn/measurement/", title: "Measurement", blurb: "Amplitudes, probabilities, shots and phase." },
       { href: "/docs/learn/bloch-sphere/", title: "The Bloch sphere", blurb: "One qubit as a point on a sphere; gates as rotations." },
       { href: "/docs/learn/many-qubits/", title: "Many qubits", blurb: "Tensor products, 2ⁿ amplitudes and bit order." },
@@ -31,15 +32,15 @@ export const DOCS = [
   {
     group: "User guide",
     items: [
-      { href: "/docs/gates/", title: "Gates", blurb: "Every gate, the method that applies it, and your own unitaries." },
-      { href: "/docs/running/", title: "Running circuits", blurb: "Shots and counts, exact states, seeds and bit order." },
+      { href: "/docs/gates/", key: true, title: "Gates", blurb: "Every gate, the method that applies it, and your own unitaries." },
+      { href: "/docs/running/", key: true, title: "Running circuits", blurb: "Shots and counts, exact states, seeds and bit order." },
       { href: "/docs/backends/", title: "CPU and GPU backends", blurb: "Precision, hardware and how auto chooses." },
     ],
   },
   {
     group: "Reference",
     items: [
-      { href: "/docs/api/", title: "API reference", blurb: "QuantumCircuit, every method, every error." },
+      { href: "/docs/api/", key: true, title: "API reference", blurb: "QuantumCircuit, every method, every error." },
       { href: "/docs/benchmarks/", title: "Benchmarks", blurb: "qsengine against pure Python and Qiskit Aer, up to 22 qubits." },
     ],
   },
@@ -124,13 +125,13 @@ ValueError: qubit 1 used more than once in one gate`,
 
 export const BELL = EXAMPLES[0];
 
-// Simulate + 1000 shots, best of several runs, ms. Ryzen 5 5500 + Radeon RX 6600, Windows 10, Qiskit Aer 0.18.2.
+// Simulate + 1000 shots, best of at least three runs, ms. Ryzen 5 5500 + Radeon RX 6600, Windows 10, Qiskit Aer 0.18.2.
 export const BENCH = [
-  { qubits: 6, python: "2.2 ms", cpu: "0.11 ms", gpu: "1.3 ms", aer: "3.7 ms" },
-  { qubits: 10, python: "30 ms", cpu: "0.30 ms", gpu: "1.2 ms", aer: "5.7 ms" },
-  { qubits: 14, python: "739 ms", cpu: "2.4 ms", gpu: "1.3 ms", aer: "11.7 ms" },
-  { qubits: 18, python: "16.2 s", cpu: "25 ms", gpu: "4.9 ms", aer: "19 ms" },
-  { qubits: 22, python: "not run", cpu: "1.03 s", gpu: "70 ms", aer: "367 ms" },
+  { qubits: 6, python: "2.2 ms", cpu: "0.11 ms", gpu: "1.4 ms", aer: "3.4 ms" },
+  { qubits: 10, python: "31 ms", cpu: "0.29 ms", gpu: "1.3 ms", aer: "6.1 ms" },
+  { qubits: 14, python: "713 ms", cpu: "2.2 ms", gpu: "1.5 ms", aer: "11.7 ms" },
+  { qubits: 18, python: "17.7 s", cpu: "21 ms", gpu: "6.2 ms", aer: "29 ms" },
+  { qubits: 22, python: "not run", cpu: "1.17 s", gpu: "77 ms", aer: "431 ms" },
 ];
 
 
@@ -141,9 +142,9 @@ export const FAQ = [
   ["How many qubits can I simulate?", "Memory doubles with every qubit: 16 bytes for each of the 2ⁿ amplitudes. 20 qubits take 16 MiB, 26 take 1 GiB, and 30 qubits (16 GiB) is the hard limit. If the state does not fit in memory, qsengine raises MemoryError."],
   ["Why do GPU results differ in the last digits?", "The GPU computes in 32-bit floats and the CPU in 64-bit. They agree to about 1e-5, far below what sampling can show."],
   ["Which way round are the bits?", "Qubit 0 is the rightmost character, as in Qiskit. On three qubits, qc.x(0) measures as \"001\"."],
-  ["Is it faster than Qiskit Aer?", "In our benchmark the GPU backend is 3 to 9 times faster from 14 qubits. The CPU backend is faster up to about 16 qubits and slower above 17, where Aer fuses multi-qubit gates."],
+  ["Is it faster than Qiskit Aer?", "In our benchmark the GPU backend is 3 to 8 times faster from 14 qubits. The CPU backend is faster up to 19 qubits and slower from 20, where Aer fuses multi-qubit gates."],
   ["Will the same seed give the same counts?", "Yes. run(seed=42) returns identical counts every time on the same backend."],
-  ["What is missing?", "Mid-circuit measurement is not in 1.0. Every qubit is measured at the end of the circuit."],
+  ["Can I measure part-way through a circuit?", "Yes, from 1.1. Give the circuit classical bits, call qc.measure(qubit, clbit) at any point, and put gates that depend on the result inside with qc.if_test(clbit, value). Each shot of such a circuit is simulated on its own, so it costs more than a circuit that only measures at the end."],
   ["Which Python versions work?", "CPython 3.9 and newer. One wheel per platform covers all of them."],
   ["Is it free?", "Yes. qsengine is open source under the MIT licence."],
 ];

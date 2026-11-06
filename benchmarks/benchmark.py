@@ -102,10 +102,10 @@ def prepare_aer(n, gates, shots):
 # --- Harness -----------------------------------------------------------------
 
 
-def best_time(fn, budget=0.5, max_reps=7):
-    """Fastest of several runs: repeat until `budget` seconds or `max_reps` runs."""
+def best_time(fn, budget=0.5, max_reps=7, min_reps=3):
+    """Fastest of several runs: at least `min_reps`, then repeat until `budget` seconds or `max_reps` runs."""
     times = []
-    while len(times) < max_reps and sum(times) < budget:
+    while len(times) < max_reps and (len(times) < min_reps or sum(times) < budget):
         start = time.perf_counter()
         fn()
         times.append(time.perf_counter() - start)

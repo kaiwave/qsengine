@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { DOCS, REPO, VERSION } from "../content";
 
 // "/docs/gates" and "/docs/gates/" are the same page.
@@ -32,22 +33,49 @@ export function SiteHeader() {
   );
 }
 
-export function SideNav() {
+// `sections` maps each page's href to its [{ id, text }] sections, which open under the page.
+export function SideNav({ sections }) {
   const path = norm(usePathname());
+  const [open, setOpen] = useState(() => new Set([path]));
+  // The page you navigate to opens; pages you opened by hand stay open.
+  useEffect(() => setOpen((s) => (s.has(path) ? s : new Set(s).add(path))), [path]);
+  const toggle = (p) => setOpen((s) => {
+    const next = new Set(s);
+    next.has(p) ? next.delete(p) : next.add(p);
+    return next;
+  });
   return (
     <nav className="side" aria-label="Documentation">
       <Link className="side__home" href="/docs/" aria-current={path === "/docs" ? "page" : undefined}>Documentation contents</Link>
       {DOCS.map((g) => (
-        <div className="side__group" key={g.group}>
-          <h2 className="side__head">{g.group}</h2>
+        <details className="side__group" key={g.group} open>
+          <summary className="side__head"><h2>{g.group}</h2></summary>
           <ul>
-            {g.items.map((it) => (
-              <li key={it.href}>
-                <Link href={it.href} aria-current={path === norm(it.href) ? "page" : undefined}>{it.title}</Link>
-              </li>
-            ))}
+            {g.items.map((it) => {
+              const p = norm(it.href);
+              const subs = sections[it.href] ?? [];
+              const isOpen = subs.length > 0 && open.has(p);
+              return (
+                <li key={it.href} className={isOpen ? "side__open" : undefined}>
+                  <div className="side__row">
+                    <Link href={it.href} aria-current={path === p ? "page" : undefined}>{it.title}</Link>
+                    {subs.length > 0 && (
+                      <button type="button" className="side__toggle" aria-expanded={isOpen}
+                        aria-label={`Sections of ${it.title}`} onClick={() => toggle(p)} />
+                    )}
+                  </div>
+                  {isOpen && (
+                    <ul className="side__sections">
+                      {subs.map((s) => (
+                        <li key={s.id}><Link href={`${it.href}#${s.id}`}>{s.text}</Link></li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
-        </div>
+        </details>
       ))}
     </nav>
   );

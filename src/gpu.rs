@@ -37,6 +37,8 @@ const MAX_WORKGROUPS_PER_DIM: u32 = 65_535;
 const GATES_PER_FLUSH: usize = 1024;
 /// Bytes per amplitude on the GPU: two f32s.
 const AMP_BYTES: u64 = 8;
+/// Workgroups for the qubit-probability reduction: also how many partial sums are read back.
+const REDUCE_GROUPS: u32 = 64;
 
 /// Per-gate parameters, laid out exactly like `struct Params` in the shader.
 #[repr(C)]
@@ -55,6 +57,9 @@ struct GpuContext {
     queue: wgpu::Queue,
     pipeline: wgpu::ComputePipeline,
     layout: wgpu::BindGroupLayout,
+    /// `shaders/qubit_probability.wgsl`, for mid-circuit measurement. Its bind
+    /// group layout is derived from the shader (`layout: None`).
+    prob_pipeline: wgpu::ComputePipeline,
     /// Byte spacing between per-gate parameter blocks in the uniform buffer:
     /// the struct size rounded up to the device's dynamic-offset alignment.
     uniform_align: u64,
@@ -148,11 +153,22 @@ impl GpuContext {
             cache: None,
         });
 
+        let prob_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/qubit_probability.wgsl"));
+        let prob_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("qsengine qubit_probability"),
+            layout: None,
+            module: &prob_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
         Ok(Self {
             device,
             queue,
             pipeline,
             layout,
+            prob_pipeline,
             uniform_align: (size_of::<GateParams>() as u64).next_multiple_of(limits.min_uniform_buffer_offset_alignment as u64),
             max_state_bytes: limits.max_buffer_size.min(limits.max_storage_buffer_binding_size as u64),
         })
@@ -173,6 +189,10 @@ pub struct GpuQuantumState {
     state: wgpu::Buffer,
     params: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+    /// Qubit-probability reduction: its parameters, its partial sums, and their bind group.
+    prob_params: wgpu::Buffer,
+    partials: wgpu::Buffer,
+    prob_bind_group: wgpu::BindGroup,
     /// Gates recorded but not yet run. A Mutex (not RefCell) so the state is
     /// `Send + Sync`, which PyO3 requires; read methods take `&self` but must flush.
     pending: Mutex<Vec<GateParams>>,
@@ -221,7 +241,39 @@ impl GpuQuantumState {
             ],
         });
 
-        Ok(Self { num_qubits, ctx, state, params, bind_group, pending: Mutex::new(Vec::new()) })
+        let prob_params = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("qsengine probability params"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let partials = ctx.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("qsengine probability partials"),
+            size: REDUCE_GROUPS as u64 * 4,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        let prob_bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("qsengine probability bind group"),
+            layout: &ctx.prob_pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: state.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: prob_params.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: partials.as_entire_binding() },
+            ],
+        });
+
+        Ok(Self {
+            num_qubits,
+            ctx,
+            state,
+            params,
+            bind_group,
+            prob_params,
+            partials,
+            prob_bind_group,
+            pending: Mutex::new(Vec::new()),
+        })
     }
 
     /// Run every queued gate on the GPU. Called automatically before any read;
@@ -262,6 +314,26 @@ impl GpuQuantumState {
         }
         self.ctx.queue.submit([encoder.finish()]);
     }
+
+    /// Submit `encoder` plus a copy of `src` into a mappable buffer (GPU-only
+    /// memory cannot be read directly), wait for the GPU, and pass the f32s to `read`.
+    fn read_back<T>(&self, mut encoder: wgpu::CommandEncoder, src: &wgpu::Buffer, read: impl FnOnce(&[f32]) -> T) -> T {
+        let size = src.size();
+        let staging = self.ctx.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("qsengine readback"),
+            size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        encoder.copy_buffer_to_buffer(src, 0, &staging, 0, size);
+        self.ctx.queue.submit([encoder.finish()]);
+
+        let slice = staging.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |r| r.expect("GPU buffer map failed"));
+        self.ctx.device.poll(wgpu::PollType::Wait).expect("GPU device lost");
+        let data = slice.get_mapped_range();
+        read(bytemuck::cast_slice(&data))
+    }
 }
 
 impl QuantumBackend for GpuQuantumState {
@@ -292,26 +364,24 @@ impl QuantumBackend for GpuQuantumState {
 
     fn amplitudes(&self) -> Vec<Complex64> {
         self.flush();
-        let size = self.state.size();
+        let encoder = self.ctx.device.create_command_encoder(&Default::default());
+        self.read_back(encoder, &self.state, |floats| {
+            floats.chunks_exact(2).map(|c| Complex64::new(c[0] as f64, c[1] as f64)).collect()
+        })
+    }
 
-        // GPU-only memory cannot be read directly: copy into a mappable staging buffer.
-        let staging = self.ctx.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("qsengine readback"),
-            size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+    fn probability_of_one(&self, qubit: usize) -> f64 {
+        self.flush();
+        let params = [qubit as u32, (1u32 << self.num_qubits) / 2, 0, 0];
+        self.ctx.queue.write_buffer(&self.prob_params, 0, bytemuck::cast_slice(&params));
         let mut encoder = self.ctx.device.create_command_encoder(&Default::default());
-        encoder.copy_buffer_to_buffer(&self.state, 0, &staging, 0, size);
-        self.ctx.queue.submit([encoder.finish()]);
-
-        let slice = staging.slice(..);
-        slice.map_async(wgpu::MapMode::Read, |r| r.expect("GPU buffer map failed"));
-        self.ctx.device.poll(wgpu::PollType::Wait).expect("GPU device lost");
-
-        let data = slice.get_mapped_range();
-        let floats: &[f32] = bytemuck::cast_slice(&data);
-        floats.chunks_exact(2).map(|c| Complex64::new(c[0] as f64, c[1] as f64)).collect()
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&self.ctx.prob_pipeline);
+            pass.set_bind_group(0, &self.prob_bind_group, &[]);
+            pass.dispatch_workgroups(REDUCE_GROUPS, 1, 1);
+        }
+        self.read_back(encoder, &self.partials, |sums| sums.iter().map(|&s| s as f64).sum())
     }
 
     fn collapse_to(&mut self, index: usize) {
@@ -371,5 +441,10 @@ mod tests {
         let (a, b) = (cpu.amplitudes(), gpu.amplitudes());
         let worst = a.iter().zip(&b).map(|(x, y)| (x - y).norm()).fold(0.0, f64::max);
         assert!(worst < 1e-5, "GPU differs from CPU by {worst}");
+        // The reduction shader agrees with the CPU sum on every qubit, low and high.
+        for q in [0, 7, n - 1] {
+            let (pc, pg) = (cpu.probability_of_one(q), gpu.probability_of_one(q));
+            assert!((pc - pg).abs() < 1e-5, "qubit {q}: CPU {pc}, GPU {pg}");
+        }
     }
 }

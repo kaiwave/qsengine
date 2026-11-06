@@ -25,6 +25,8 @@ qc.run(shots=1000, backend="gpu")  # the GPU, or RuntimeError
 
 Launching work on a GPU and reading the result back costs about a millisecond, whatever the circuit. Below 14 qubits the CPU finishes before that. From 14 qubits up the GPU is faster, and the gap grows with every qubit: at 22 qubits it is about 15 times faster than the CPU backend. The crossover was measured on one desktop (Ryzen 5 5500 and Radeon RX 6600) and may sit a qubit higher or lower on yours.
 
+Circuits that measure part-way switch later, at 20 qubits. Each mid-circuit measurement waits for one number to come back from the GPU, about a millisecond, and every shot is simulated on its own, so those waits add up. Below 20 qubits the CPU finishes a whole shot first.
+
 ## Precision
 
 The CPU computes in 64-bit floats. GPUs generally lack fast 64-bit arithmetic, so the GPU backend uses 32-bit floats and agrees with the CPU to about 1e-5. Counts from `run()` are unaffected in practice; pass `backend="cpu"` when you compare amplitudes to many decimal places.

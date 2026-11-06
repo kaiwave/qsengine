@@ -1,4 +1,7 @@
-"""Type stub for the compiled `qsengine` extension (gives IDEs autocomplete and types).
+"""Type stub for the compiled `qsengine._core` extension (gives IDEs autocomplete and types).
+
+Import `qsengine`, not `qsengine._core`: the package's `QuantumCircuit` subclasses
+this one and adds drawing, `if_test` and conveniences.
 
 Bit order: qubit 0 is the rightmost character of every bitstring and bit 0 of
 every basis index, the same convention as Qiskit.
@@ -16,13 +19,13 @@ Backend = Literal["auto", "cpu", "gpu"]
 class QuantumCircuit:
     """A quantum circuit on a fixed number of qubits, starting in |0...0>."""
 
-    def __init__(self, num_qubits: int) -> None: ...
+    def __init__(self, num_qubits: int, num_clbits: int = 0) -> None: ...
     @property
     def num_qubits(self) -> int: ...
+    @property
+    def num_clbits(self) -> int: ...
     def __len__(self) -> int:
-        """Number of gates recorded so far."""
-    def __str__(self) -> str:
-        """Text drawing of the circuit, one wire per qubit: `print(qc)`."""
+        """Number of operations (gates, measurements, resets) recorded so far."""
 
     # Single-qubit gates
     def x(self, qubit: int) -> None: ...
@@ -58,12 +61,25 @@ class QuantumCircuit:
     ) -> None:
         """Apply a 2x2 unitary to `target`; raises ValueError if it is not unitary."""
 
+    # Measurement and reset
+    def measure(self, qubit: int, clbit: int) -> None:
+        """Measure `qubit` into classical bit `clbit`, part-way through or at the end."""
+    def reset(self, qubit: int) -> None:
+        """Reset `qubit` to |0>."""
+
     # Execution
     def run(
         self, shots: int = 1024, seed: Optional[int] = None, backend: Backend = "auto"
     ) -> dict[str, int]:
-        """Measure all qubits `shots` times; returns {bitstring: count}."""
+        """Run `shots` times; returns {bitstring: count} over classical bits, or over qubits if nothing is measured."""
     def statevector(self, backend: Backend = "auto") -> npt.NDArray[np.complex128]:
         """Exact final amplitudes, length 2**num_qubits."""
     def probabilities(self, backend: Backend = "auto") -> npt.NDArray[np.float64]:
         """Exact final basis-state probabilities, length 2**num_qubits."""
+    def expectation(self, paulis: Sequence[str], backend: Backend = "auto") -> npt.NDArray[np.float64]:
+        """Expectation value of each Pauli string, from one simulation."""
+
+    # Used by the Python package
+    def _ops(self) -> list[tuple]: ...
+    def _set_condition(self, clbits: Sequence[int], value: int) -> None: ...
+    def _clear_condition(self) -> None: ...

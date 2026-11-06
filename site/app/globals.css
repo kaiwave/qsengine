@@ -121,7 +121,8 @@ p, li, dd { text-wrap: pretty; }
 
 .output { background: var(--tint); padding: 16px 20px 18px; display: grid; gap: 12px; }
 .output__label { font-size: var(--step-small); font-weight: 700; }
-.output pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+/* Scroll rather than wrap, and a tighter line height, so print(qc) wires stay joined. */
+.output pre { overflow-x: auto; line-height: 1.3; }
 .bars { display: grid; gap: 4px; font-variant-numeric: tabular-nums; max-width: 30rem; }
 .bars__row { display: grid; grid-template-columns: 3.4rem 1fr; align-items: center; gap: 12px; }
 .bars__row dd { display: flex; align-items: center; gap: 10px; }
@@ -153,7 +154,7 @@ p, li, dd { text-wrap: pretty; }
 
 .contents { background: var(--tint); padding: 72px var(--m); }
 .contents__title, .release h2 { font-family: var(--font-display); font-weight: 900; font-size: var(--step-head); letter-spacing: -0.01em; margin-bottom: 32px; }
-.contents__groups { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 32px var(--gap); }
+.contents__groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px var(--gap); margin-bottom: 32px; }
 .contents h3 { font-size: var(--step-body); font-weight: 700; margin-bottom: 12px; }
 .contents ul { list-style: none; padding: 0; display: grid; gap: 14px; }
 .contents li { display: grid; gap: 2px; }
@@ -197,14 +198,32 @@ p, li, dd { text-wrap: pretty; }
 .side a[aria-current="page"] { color: var(--purple); font-weight: 700; }
 .side__home { display: block; font-weight: 700; font-size: var(--step-body); margin-bottom: 24px; }
 .side__group { margin-bottom: 22px; }
-.side__head { font-size: var(--step-small); font-weight: 700; color: var(--soft); margin-bottom: 6px; }
+.side__head { font-size: var(--step-small); font-weight: 700; color: var(--soft); margin-bottom: 6px; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.side__head::-webkit-details-marker { display: none; }
+.side__head h2 { font: inherit; }
 .side ul { list-style: none; padding: 0; display: grid; gap: 6px; }
+/* A small chevron: right when closed, down when open. */
+.side__head::before, .side__toggle::before {
+  content: ""; width: 6px; height: 6px; flex: none;
+  border: solid currentColor; border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg); transition: transform 0.15s;
+}
+.side__group[open] > .side__head::before, .side__toggle[aria-expanded="true"]::before { transform: rotate(45deg); }
+.side__row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.side__toggle {
+  flex: none; display: grid; place-items: center; width: 24px; height: 20px; padding: 0;
+  border: 0; background: none; color: var(--soft); cursor: pointer; align-self: center;
+}
+.side__sections { margin: 6px 0 4px 2px; padding-left: 12px !important; border-left: 1.5px solid var(--lilac); }
+.side__sections a { color: var(--soft); }
 
 .docs__main { padding: 48px var(--m) 72px; }
 @media (max-width: 900px) {
   .docs { grid-template-columns: 1fr; }
   .side { position: static; max-height: none; padding: 20px var(--m) 24px; }
   .side ul { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; }
+  .side .side__sections { grid-template-columns: 1fr; }
+  .side__open { grid-column: 1 / -1; }
   .side__group { margin-bottom: 14px; }
   .docs__main { padding-top: 32px; }
 }

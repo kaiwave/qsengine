@@ -13,6 +13,7 @@
 //! | [`gates`]   | 2x2 gate matrices (Paulis, H, S, T, phase, U, rotations)       |
 //! | [`backend`] | The [`QuantumBackend`] trait: the one API every simulator obeys |
 //! | [`circuit`] | [`QuantumCircuit`]: record gates now, run them later           |
+//! | [`pauli`]   | Expectation values of Pauli strings such as `"ZZI"`            |
 //! | [`engine`]  | [`QuantumState`]: multithreaded CPU backend (f64 precision)    |
 //! | [`gpu`]     | [`GpuQuantumState`]: portable GPU backend via wgpu (f32)       |
 //! | `python`    | PyO3 bindings (only with the `python` feature, built by maturin) |
@@ -32,7 +33,8 @@
 //!
 //! ## Python
 //!
-//! The `python` module wraps [`QuantumCircuit`] as `qsengine.QuantumCircuit`.
+//! The `python` module wraps [`QuantumCircuit`] as `qsengine._core.QuantumCircuit`,
+//! which `python/qsengine/__init__.py` extends in plain Python (drawing, `if_test`).
 //! Errors map from [`QsError`] to `ValueError` / `RuntimeError` / `MemoryError`. Build it with
 //! `maturin develop --release` (see the README).
 
@@ -42,6 +44,7 @@ pub mod engine;
 pub mod gates;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+pub mod pauli;
 #[cfg(feature = "python")]
 mod python;
 
@@ -57,6 +60,9 @@ use std::fmt;
 /// Hard upper limit on register size. 30 qubits of `Complex<f64>` is 16 GiB,
 /// already beyond most machines; it guards against accidental huge allocations.
 pub const MAX_QUBITS: usize = 30;
+
+/// Most classical bits a circuit can have: one shot's bits are packed into a `usize`.
+pub const MAX_CLBITS: usize = usize::BITS as usize;
 
 /// Every error the engine can return.
 #[derive(Debug, Clone, PartialEq)]
@@ -75,6 +81,13 @@ pub enum QsError {
     NonFinite,
     /// The state vector did not fit in memory.
     OutOfMemory { bytes: usize },
+    /// A classical bit index was `>= num_clbits`.
+    ClbitOutOfRange { clbit: usize, num_clbits: usize },
+    /// An exact result was asked of a circuit that measures or resets part-way,
+    /// whose final state is random.
+    MidCircuitMeasurement,
+    /// Any other invalid argument, with a message that says what was wrong.
+    InvalidArgument(String),
     /// No usable GPU, or the GPU driver reported an error.
     Gpu(String),
 }
@@ -97,6 +110,14 @@ impl fmt::Display for QsError {
             QsError::OutOfMemory { bytes } => {
                 write!(f, "not enough memory for the state vector ({:.1} GiB)", *bytes as f64 / (1u64 << 30) as f64)
             }
+            QsError::ClbitOutOfRange { clbit, num_clbits } => {
+                write!(f, "classical bit {clbit} out of range for a circuit with {num_clbits} classical bits")
+            }
+            QsError::MidCircuitMeasurement => write!(
+                f,
+                "the circuit measures or resets a qubit before a later gate, so its final state is random; use run()"
+            ),
+            QsError::InvalidArgument(msg) => f.write_str(msg),
             QsError::Gpu(msg) => write!(f, "GPU error: {msg}"),
         }
     }
@@ -115,6 +136,17 @@ pub type Result<T> = std::result::Result<T, QsError>;
 ///
 /// shortcut: one machine's crossover; a per-machine calibration could replace it if users report slow small circuits.
 pub const GPU_MIN_QUBITS: usize = 14;
+
+/// The same crossover for circuits with mid-circuit measurement, which
+/// [`BackendKind::Auto`] runs on the CPU below this many qubits.
+///
+/// Every mid-circuit measurement waits for one number to come back from the GPU
+/// (about 1 ms), and every shot is its own simulation, so the GPU only pays off
+/// for large states. Measured with a 3-layer circuit that measures every qubit
+/// part-way: CPU 21 ms/shot vs GPU 48 at 18 qubits, CPU 82 vs GPU 51 at 20.
+///
+/// shortcut: one machine's crossover, like [`GPU_MIN_QUBITS`].
+pub const GPU_MIN_QUBITS_DYNAMIC: usize = 20;
 
 /// Which simulator to run on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

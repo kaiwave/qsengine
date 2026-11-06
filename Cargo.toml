@@ -1,6 +1,6 @@
 [package]
 name = "qsengine"
-version = "1.0.2"
+version = "1.1.0"
 edition = "2024"
 license = "MIT"
 description = "High-performance state-vector quantum simulator (CPU + portable GPU backends)"
@@ -8,12 +8,19 @@ repository = "https://github.com/kaiwave/qsengine"
 homepage = "https://qsengine.kaiwave.dev"
 readme = "README.md"
 # Keep the source distribution to what builds the package: no website, benchmarks or tooling.
-exclude = ["site/", "benchmarks/", "docs/", "tests/", ".github/", ".agents/", ".aider-desk/", ".claude/", "data/", "skills/", "skills-lock.json", ".taste-skill/"]
+exclude = ["site/", "benchmarks/", "docs/", "tests/", ".github/"]
 
 [lib]
 # `rlib` for Rust users and the demo binary; `cdylib` is the shared library
 # maturin packages as the Python extension module.
 crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+# One codegen unit plus LTO lets the gate kernel inline through Rayon the same way
+# in every build. With the default 16 units, unrelated code changes shifted the
+# split and moved 18-qubit CPU runs between 18 and 25 ms.
+codegen-units = 1
+lto = "fat"
 
 [features]
 # The GPU backend is on by default but optional: build with

@@ -42,3 +42,7 @@ test = ["pytest"]
 [tool.maturin]
 # Build the Rust crate with its Python bindings (and the default GPU backend).
 features = ["python"]
+# Mixed layout: the pure-Python package in python/qsengine/ wraps the compiled
+# module, which is installed as qsengine._core.
+python-source = "python"
+module-name = "qsengine._core"

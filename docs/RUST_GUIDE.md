@@ -2,7 +2,7 @@
 
 This guide covers every Rust language feature, standard-library function and crate function used in qsengine. The most important ones come first: once you understand the first ten sections, you can read the whole engine. Each section explains what the item is, why the engine uses it, and its syntax, with a short example taken from the codebase.
 
-Files referenced (plus `benchmarks/benchmark.py` for performance numbers): `src/lib.rs`, `src/backend.rs`, `src/engine.rs`, `src/gates.rs`, `src/gpu.rs`, `src/shaders/apply_gate.wgsl`, `src/circuit.rs`, `src/python.rs`, `src/main.rs`.
+Files referenced (plus `benchmarks/benchmark.py` for performance numbers): `src/lib.rs`, `src/backend.rs`, `src/engine.rs`, `src/gates.rs`, `src/gpu.rs`, `src/shaders/apply_gate.wgsl`, `src/circuit.rs`, `src/pauli.rs`, `src/python.rs`, `src/main.rs`.
 
 ---
 
@@ -820,7 +820,7 @@ fn qsengine(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
 A Python extension is a shared library (`.pyd` on Windows, `.so` elsewhere). `crate-type = ["cdylib", "rlib"]` makes Cargo build both the shared library and the normal Rust library that the demo and the tests use. The bindings sit behind the `python` Cargo feature, so plain `cargo build` and `cargo test` don't need Python at all. maturin switches the feature on through `pyproject.toml`.
 
-PyO3's `abi3-py39` feature compiles against CPython's *stable ABI*, so one wheel works on Python 3.9, 3.10, ... 3.14 and later. That makes distribution much easier: one wheel per OS and CPU instead of one per Python version. `qsengine.pyi` is a type stub that maturin ships alongside the extension, giving IDEs autocomplete for a module that has no `.py` source.
+PyO3's `abi3-py39` feature compiles against CPython's *stable ABI*, so one wheel works on Python 3.9, 3.10, ... 3.14 and later. That makes distribution much easier: one wheel per OS and CPU instead of one per Python version. maturin builds the extension as `qsengine._core` inside the pure-Python package in `python/qsengine/` (set by `python-source` and `module-name` in `pyproject.toml`). `_core.pyi` is the type stub that gives IDEs autocomplete for the compiled module, which has no `.py` source.
 
 ```bash
 maturin develop --release     # build and install into the active venv (for development)

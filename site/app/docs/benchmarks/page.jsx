@@ -9,7 +9,7 @@ export default function Benchmarks() {
       <h1>Benchmarks</h1>
       <p>
         Every simulator ran the same circuit: five layers of a Hadamard on every qubit, an RZ rotation on every qubit
-        and a chain of CNOTs, then 1000 measurement shots. Times are the best of several runs.
+        and a chain of CNOTs, then 1000 measurement shots. Times are the best of at least three runs.
       </p>
 
       <h2 id="results">Results</h2>
@@ -41,10 +41,10 @@ export default function Benchmarks() {
 
       <h2 id="reading">What the numbers say</h2>
       <ul>
-        <li>Below 14 qubits the CPU backend is the fastest: 7 to 60 times faster than Qiskit Aer, because a call has almost no overhead.</li>
-        <li>From 14 qubits the GPU backend is the fastest: 3 to 9 times faster than Aer.</li>
-        <li>The CPU backend falls behind Aer above about 17 qubits, where Aer merges multi-qubit gates and works in cache-sized blocks.</li>
-        <li>Against a plain Python loop, the CPU backend is about 100 times faster at 10 qubits and 640 times faster at 18.</li>
+        <li>Below 14 qubits the CPU backend is the fastest: 8 to 50 times faster than Qiskit Aer, because a call has almost no overhead.</li>
+        <li>From 14 qubits the GPU backend is the fastest: 3 to 8 times faster than Aer.</li>
+        <li>The CPU backend stays ahead of Aer up to 19 qubits and falls behind from 20, where Aer merges multi-qubit gates and works in cache-sized blocks.</li>
+        <li>Against a plain Python loop, the CPU backend is about 100 times faster at 10 qubits and 840 times faster at 18.</li>
       </ul>
 
       <h2 id="setup">Setup</h2>

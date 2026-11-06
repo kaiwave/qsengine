@@ -2,13 +2,14 @@ export const metadata = { title: "Running circuits" };
 
 # Running circuits
 
-A circuit can give you three kinds of result. Each call simulates the whole circuit from |0…0⟩ again, so you can call them as often as you like and the circuit never changes.
+A circuit can give you four kinds of result. Each call simulates the whole circuit from |0…0⟩ again, so you can call them as often as you like and the circuit never changes.
 
 | Method | Returns | Use it for |
 | --- | --- | --- |
 | `run(shots, seed, backend)` | `dict[str, int]` | Measurement counts, as a real device gives them |
 | `probabilities(backend)` | NumPy array of `float64` | The exact probability of each basis state |
 | `statevector(backend)` | NumPy array of `complex128` | The exact amplitudes |
+| `expectation(paulis, backend)` | `float`, or a NumPy array of `float64` | Exact expectation values of Pauli strings |
 
 ## Drawing a circuit
 
@@ -54,6 +55,66 @@ print(qc.run(shots=10, seed=0))
 ```
 
 <Output printed="{'001': 10}" />
+
+## Measuring part-way
+
+A circuit can also have classical bits, which hold measurement results. `measure(qubit, clbit)` measures one qubit at any point in the circuit, and gates inside a `with qc.if_test(clbit, value):` block run only when that bit has that value. This is how quantum teleportation sends a qubit's state using two measured bits:
+
+```python
+qc = qsengine.QuantumCircuit(3, 3)  # 3 qubits, 3 classical bits
+qc.ry(0, 2.0)                       # the state to send, on qubit 0
+qc.h(1)
+qc.cx(1, 2)                         # qubits 1 and 2 share a Bell pair
+qc.cx(0, 1)
+qc.h(0)
+qc.measure([0, 1], [0, 1])          # two classical bits travel to qubit 2
+with qc.if_test(1, 1):
+    qc.x(2)
+with qc.if_test(0, 1):
+    qc.z(2)
+qc.measure(2, 2)
+print(qc)
+```
+
+<Output printed={`q0: ──RY(2.00)────────●──H──M→c0───────────────────────────────────
+                      │
+q1: ────────────H──●──X───────────M→c1─────────────────────────────
+                   │
+q2: ───────────────X────────────────────X if c1=1──Z if c0=1──M→c2─`} />
+
+When a circuit measures, `run()` counts its classical bits, with bit 0 on the right. Here bit 2 holds the teleported qubit. It reads 1 in about 71% of shots, which is sin²(1.0) for the `ry(0, 2.0)` it started with, whatever the two random bits on the right were.
+
+```python
+counts = qc.run(shots=1000, seed=1)
+print(sum(n for bits, n in counts.items() if bits[0] == "1"))
+```
+
+<Output printed="700" />
+
+`reset(qubit)` puts a qubit back to |0⟩, so one qubit can be measured and reused. A `with qc.if_test([0, 1], 0b10):` block tests several bits at once: bit *i* of the value is the value required of the *i*-th bit in the list.
+
+A circuit that measures and then keeps going is in a different random state in every shot, so qsengine simulates each shot on its own. That costs `shots` times as much as a circuit that only measures at the end, which is still simulated once and sampled. For the same reason `statevector()`, `probabilities()` and `expectation()` raise `ValueError` for such a circuit; measurements at the very end are simply ignored by them.
+
+## Expectation values
+
+`expectation()` gives the expectation value ⟨ψ|P|ψ⟩ of a Pauli string such as `"ZZI"`, one letter per qubit with qubit 0 on the right. It is exact, needs no shots, and is the building block of variational algorithms such as VQE and QAOA. Pass a list to get every term of a Hamiltonian from one simulation:
+
+```python
+import numpy as np
+
+qc = qsengine.QuantumCircuit(2)
+qc.h(0)
+qc.cx(0, 1)
+print(qc.expectation("ZZ"))
+print(qc.expectation(["XX", "YY", "ZI"]))
+
+coeffs = np.array([0.5, 0.5, -1.0])
+print(coeffs @ qc.expectation(["XX", "YY", "ZI"]))  # energy of 0.5 XX + 0.5 YY - ZI
+```
+
+<Output printed={`1.0000000000000002
+[ 1. -1.  0.]
+0.0`} />
 
 ## Exact results
 

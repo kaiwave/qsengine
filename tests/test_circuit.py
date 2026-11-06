@@ -280,3 +280,152 @@ def test_repr_and_len():
     assert len(qc) == 2
     assert qc.num_qubits == 2
     assert repr(qc) == "QuantumCircuit(num_qubits=2, gates=2)"
+
+
+# --- Expectation values ------------------------------------------------------
+
+PAULI = {"I": I2, "X": X, "Y": Y, "Z": Z}
+
+
+def pauli_matrix(s):
+    """Kronecker product of the letters; the rightmost letter acts on qubit 0."""
+    out = np.array([[1]], dtype=complex)
+    for ch in s:
+        out = np.kron(out, PAULI[ch])
+    return out
+
+
+@pytest.mark.parametrize("backend,tol", BACKENDS)
+def test_expectation_against_numpy(backend, tol):
+    rng = np.random.default_rng(1)
+    gates = [("h", 0), ("ry", 1, 0.7), ("rx", 2, -1.3), ("cx", 0, 2), ("crz", 2, 1, 0.4), ("u", 0, 0.3, 0.2, -0.9)]
+    qc, ref = build_pair(3, gates)
+    terms = ["".join(rng.choice(list("IXYZ"), size=3)) for _ in range(12)] + ["ZZI", "YYY", "III"]
+    expect = [np.vdot(ref.state, pauli_matrix(t) @ ref.state).real for t in terms]
+    np.testing.assert_allclose(qc.expectation(terms, backend=backend), expect, atol=10 * tol)
+    assert isinstance(qc.expectation("ZZI", backend=backend), float)
+
+
+def test_expectation_rejects_bad_strings():
+    qc = qsengine.QuantumCircuit(2)
+    with pytest.raises(ValueError, match="has 3 letters"):
+        qc.expectation("ZZZ")
+    with pytest.raises(ValueError, match="only contain"):
+        qc.expectation("ZQ")
+
+
+# --- Mid-circuit measurement, reset and classical bits -----------------------
+
+
+def teleport(theta):
+    """Teleport RY(theta)|0> from qubit 0 to qubit 2 and measure it into c2."""
+    qc = qsengine.QuantumCircuit(3, 3)
+    qc.ry(0, theta)
+    qc.h(1)
+    qc.cx(1, 2)
+    qc.cx(0, 1)
+    qc.h(0)
+    qc.measure([0, 1], [0, 1])
+    with qc.if_test(1, 1):
+        qc.x(2)
+    with qc.if_test(0, 1):
+        qc.z(2)
+    qc.measure(2, 2)
+    return qc
+
+
+@pytest.mark.parametrize("backend,tol", BACKENDS)
+def test_teleportation(backend, tol):
+    # |1> arrives as 1 in every shot, whatever c0 and c1 were.
+    counts = teleport(math.pi).run(shots=400, seed=3, backend=backend)
+    assert sum(counts.values()) == 400 and len(counts) == 4
+    assert all(key[0] == "1" for key in counts)
+    # RY(theta)|0> arrives with P(1) = sin^2(theta/2) = 0.25 for theta = pi/3.
+    counts = teleport(math.pi / 3).run(shots=2000, seed=3, backend=backend)
+    ones = sum(n for key, n in counts.items() if key[0] == "1")
+    assert abs(ones / 2000 - 0.25) < 0.03
+
+
+@pytest.mark.parametrize("backend,tol", BACKENDS)
+def test_reset_and_reuse(backend, tol):
+    qc = qsengine.QuantumCircuit(2, 2)
+    qc.h(0)
+    qc.measure(0, 0)
+    qc.reset(0)
+    qc.x(1)
+    qc.measure([0, 1], [1, 0])  # after the reset, qubit 0 is 0
+    counts = qc.run(shots=200, seed=1, backend=backend)
+    # c0 was overwritten by qubit 1 (always 1); c1 holds qubit 0 after reset (always 0).
+    assert counts == {"01": 200}
+
+
+def test_final_measurements_use_the_fast_path_and_bit_order():
+    qc = qsengine.QuantumCircuit(2, 3)
+    qc.x(0)
+    qc.measure(0, 2)
+    qc.measure(1, 0)
+    assert qc.run(shots=20, seed=0) == {"100": 20}
+    # Exact results ignore the final measurements.
+    np.testing.assert_allclose(qc.probabilities(), [0, 1, 0, 0])
+
+
+def test_seeded_mid_circuit_runs_repeat():
+    qc = teleport(1.1)
+    assert qc.run(shots=300, seed=9) == qc.run(shots=300, seed=9)
+
+
+def test_condition_before_any_measurement_sees_zeros():
+    qc = qsengine.QuantumCircuit(1, 1)
+    with qc.if_test(0, 0):
+        qc.x(0)
+    assert qc.run(shots=5, seed=0) == {"1": 5}
+
+
+def test_exact_results_refuse_mid_circuit_measurement():
+    qc = teleport(0.5)
+    for call in (qc.statevector, qc.probabilities, lambda: qc.expectation("ZZZ")):
+        with pytest.raises(ValueError, match="use run"):
+            call()
+
+
+def test_measurement_errors():
+    qc = qsengine.QuantumCircuit(2, 1)
+    with pytest.raises(ValueError, match="classical bit 1 out of range"):
+        qc.measure(0, 1)
+    with pytest.raises(ValueError, match="2 qubits but 1"):
+        qc.measure([0, 1], [0])
+    with pytest.raises(ValueError, match="does not fit"):
+        with qc.if_test(0, 2):
+            pass
+    with qc.if_test(0, 1):
+        with pytest.raises(ValueError, match="nested"):
+            with qc.if_test(0, 1):
+                pass
+        with pytest.raises(ValueError, match="only gates"):
+            qc.measure(0, 0)
+        qc.x(0)
+    qc.x(1)  # the block ended, so this one is unconditional
+    assert "X if c0=1" in str(qc) and len(qc) == 2
+
+
+def test_print_draws_measurement_reset_and_conditions():
+    qc = qsengine.QuantumCircuit(2, 2)
+    qc.h(0)
+    qc.measure(0, 0)
+    with qc.if_test(0, 1):
+        qc.x(1)
+    qc.reset(0)
+    qc.swap(0, 1)
+    assert str(qc) == (
+        "q0: ──H──M→c0─────────────|0⟩──×─\n"
+        "                               │\n"
+        "q1: ───────────X if c0=1───────×─"
+    )
+    assert len(qc) == 5  # a swap is one operation
+
+
+def test_print_draws_a_conditional_swap():
+    qc = qsengine.QuantumCircuit(2, 1)
+    with qc.if_test(0, 1):
+        qc.swap(0, 1)
+    assert "× if c0=1" in str(qc)
