@@ -7,6 +7,7 @@ are inherited unchanged, so recording a gate still costs one call into Rust.
 """
 
 from contextlib import contextmanager
+from operator import index
 from typing import Iterator, Sequence, Union, overload
 
 import numpy as np
@@ -19,6 +20,14 @@ from ._drawer import draw
 __all__ = ["QuantumCircuit", "__version__"]
 
 
+def _int_like(x):
+    """int-like arguments (NumPy integers included) as int, sequences unchanged."""
+    try:
+        return index(x)
+    except TypeError:
+        return x
+
+
 class QuantumCircuit(_core.QuantumCircuit):
     __doc__ = _core.QuantumCircuit.__doc__
     __slots__ = ()  # no per-instance __dict__, like the Rust class
@@ -29,7 +38,7 @@ class QuantumCircuit(_core.QuantumCircuit):
 
     def measure(self, qubit: Union[int, Sequence[int]], clbit: Union[int, Sequence[int]]) -> None:
         """Measure `qubit` into classical bit `clbit`. Both may be equal-length lists."""
-        if isinstance(qubit, int) and isinstance(clbit, int):
+        if isinstance(qubit := _int_like(qubit), int) and isinstance(clbit := _int_like(clbit), int):
             return super().measure(qubit, clbit)
         qubits, clbits = list(qubit), list(clbit)  # type: ignore[arg-type]
         if len(qubits) != len(clbits):
@@ -45,6 +54,7 @@ class QuantumCircuit(_core.QuantumCircuit):
         required of `clbits[i]`. For example `with qc.if_test(1, 1): qc.x(2)`
         flips qubit 2 in the shots where classical bit 1 was measured as 1.
         """
+        clbits = _int_like(clbits)
         self._set_condition([clbits] if isinstance(clbits, int) else list(clbits), value)
         try:
             yield self

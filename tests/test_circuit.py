@@ -408,6 +408,17 @@ def test_measurement_errors():
     assert "X if c0=1" in str(qc) and len(qc) == 2
 
 
+def test_numpy_integers_accepted_as_indices():
+    qc = qsengine.QuantumCircuit(2, 2)
+    qc.measure(np.arange(2)[1], 0)
+    qc.measure([0, 1], [np.int64(0), np.int64(0)])
+    with qc.if_test(np.int64(1), 1):
+        qc.x(0)
+    with qc.if_test(np.int64(0), np.int64(1)):
+        qc.x(1)
+    assert "X if c1=1" in str(qc) and "X if c0=1" in str(qc) and len(qc) == 5
+
+
 def test_print_draws_measurement_reset_and_conditions():
     qc = qsengine.QuantumCircuit(2, 2)
     qc.h(0)
