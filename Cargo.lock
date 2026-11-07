@@ -799,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "qsengine"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "bytemuck",
  "num-complex",

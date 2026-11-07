@@ -22,6 +22,9 @@ site/out/
 .idea/
 .DS_Store
 
+# Local documentation
+/docs/RUST_GUIDE.md
+
 # Local AI-tooling folders
 .claude/
 .agents/
