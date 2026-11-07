@@ -73,9 +73,9 @@ class QuantumCircuit:
     ) -> dict[str, int]:
         """Run `shots` times; returns {bitstring: count} over classical bits, or over qubits if nothing is measured."""
     def statevector(self, backend: Backend = "auto") -> npt.NDArray[np.complex128]:
-        """Exact final amplitudes, length 2**num_qubits."""
+        """Final amplitudes, length 2**num_qubits; 32-bit precision from 14 qubits under "auto" with a GPU."""
     def probabilities(self, backend: Backend = "auto") -> npt.NDArray[np.float64]:
-        """Exact final basis-state probabilities, length 2**num_qubits."""
+        """Final basis-state probabilities, length 2**num_qubits; 32-bit precision from 14 qubits under "auto" with a GPU."""
     def expectation(self, paulis: Sequence[str], backend: Backend = "auto") -> npt.NDArray[np.float64]:
         """Expectation value of each Pauli string, from one simulation."""
 

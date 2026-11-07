@@ -50,8 +50,8 @@ qc.cx(1, 2)
 
 print(qc)                   # text drawing, one wire per qubit
 qc.run(shots=1000)          # measurement counts: {'000': ..., '111': ...}
-qc.probabilities()          # exact probabilities of all 8 basis states (NumPy array)
-qc.statevector()            # exact complex amplitudes (NumPy array)
+qc.probabilities()          # probabilities of all 8 basis states, computed, not sampled (NumPy array)
+qc.statevector()            # complex amplitudes, computed, not sampled (NumPy array)
 qc.expectation("ZZI")       # expectation value of a Pauli string: 1.0
 ```
 
@@ -94,9 +94,11 @@ Every method that runs a circuit takes `backend="auto"` (the default), `"cpu"` o
 
 | | CPU | GPU | auto |
 | --- | --- | --- | --- |
-| Precision | 64-bit | 32-bit (within 1e-5 of the CPU) | 64-bit below 14 qubits, 32-bit from 14 |
+| Precision | 64-bit | 32-bit (within about 1e-5 of the CPU for a few hundred gates; error grows with circuit depth) | 64-bit below 14 qubits, 32-bit from 14 |
 | Runs on | every CPU core | any NVIDIA, AMD, Intel or Apple GPU | whichever is faster |
 | Without a GPU | works | raises `RuntimeError` | falls back to the CPU |
+
+With the default `"auto"`, `statevector()`, `probabilities()` and `expectation()` switch from 64-bit to 32-bit results at 14 qubits on a machine with a GPU. Pass `backend="cpu"` when you need full 64-bit precision at every size, for example in a study that compares results across register sizes.
 
 The full API, every error message and a guide to each topic are in the [documentation](https://qsengine.kaiwave.dev/docs/).
 
@@ -114,11 +116,19 @@ Each run simulates 5 layers of (H on every qubit, RZ on every qubit, CNOT chain)
 | 18 | 17.7 s | 21 ms | **6.2 ms** | 29 ms |
 | 22 | not run | 1.17 s | **77 ms** | 431 ms |
 
-Below 14 qubits the CPU backend is 8 to 50 times faster than Aer; from 14 qubits the GPU backend is 3 to 8 times faster. The CPU backend stays ahead of Aer up to 19 qubits and falls behind from 20, where Aer fuses multi-qubit gates. These are one machine's numbers: reproduce them with [`benchmarks/benchmark.py`](benchmarks/benchmark.py).
+Below 14 qubits the CPU backend is 8 to 50 times faster than Aer; from 14 qubits the GPU backend is 3 to 8 times faster. The CPU backend stays ahead of Aer up to 19 qubits and falls behind from 20. At 20 qubits a 64-bit state vector is 16 MiB, the size of this CPU's L3 cache, and the CPU backend's time per extra qubit jumps from about 2× to 3–4×, so the likely cause is the state no longer fitting in cache. These are one machine's numbers: reproduce them with [`benchmarks/benchmark.py`](benchmarks/benchmark.py).
+
+Read the comparison with these caveats:
+
+- The qsengine GPU backend computes in 32-bit floats; Aer ran in its default 64-bit precision. Aer's `precision="single"` option would be the like-for-like comparison.
+- Below about 14 qubits Aer's time is mostly its fixed per-call cost (about 2 ms to submit a job and build its result), so the speedups there measure call overhead more than simulation.
+- There is one benchmark circuit. qsengine merges the H and RZ on each qubit into one pass over the state, which suits this circuit; other circuits may compare differently.
 
 ## Limitations
 
 A register holds at most 30 qubits (16 GiB of memory) and 64 classical bits. A circuit that measures part-way is simulated once per shot, so it costs `shots` times as much as one that only measures at the end. Exact results (`statevector()`, `probabilities()`, `expectation()`) need a circuit that does not measure or reset before a later gate.
+
+On the GPU (`backend="gpu"`, or `"auto"` from 20 qubits for circuits that measure part-way), each mid-circuit measurement renormalises the state using a 32-bit sum. The small error adds up over many measurements in one shot; use `backend="cpu"` when that matters.
 
 ## Building from source
 

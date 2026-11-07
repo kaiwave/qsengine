@@ -41,16 +41,17 @@ export default function Benchmarks() {
 
       <h2 id="reading">What the numbers say</h2>
       <ul>
-        <li>Below 14 qubits the CPU backend is the fastest: 8 to 50 times faster than Qiskit Aer, because a call has almost no overhead.</li>
-        <li>From 14 qubits the GPU backend is the fastest: 3 to 8 times faster than Aer.</li>
-        <li>The CPU backend stays ahead of Aer up to 19 qubits and falls behind from 20, where Aer merges multi-qubit gates and works in cache-sized blocks.</li>
+        <li>Below 14 qubits the CPU backend is the fastest: 8 to 50 times faster than Qiskit Aer, because a call has almost no overhead. Aer&rsquo;s time there is mostly its fixed per-call cost (about 2 ms to submit a job and build its result), so this measures call overhead more than simulation.</li>
+        <li>From 14 qubits the GPU backend is the fastest: 3 to 8 times faster than Aer. The GPU backend computes in 32-bit floats and Aer ran in 64-bit; Aer&rsquo;s <code>precision=&quot;single&quot;</code> option would be the like-for-like comparison.</li>
+        <li>The CPU backend stays ahead of Aer up to 19 qubits and falls behind from 20. At 20 qubits a 64-bit state is 16 MiB, the size of this CPU&rsquo;s L3 cache, and the CPU backend&rsquo;s time per extra qubit jumps from about 2&times; to 3&ndash;4&times;, so the likely cause is the state no longer fitting in cache.</li>
+        <li>There is one benchmark circuit. qsengine merges the H and RZ on each qubit into one pass over the state, which suits this circuit; other circuits may compare differently.</li>
         <li>Against a plain Python loop, the CPU backend is about 100 times faster at 10 qubits and 840 times faster at 18.</li>
       </ul>
 
       <h2 id="setup">Setup</h2>
       <p>
         AMD Ryzen 5 5500 (6 cores), AMD Radeon RX 6600, Windows 10, Python 3.14, Qiskit Aer 0.18.2 with its default
-        statevector method. These are one machine&rsquo;s numbers; run the script to get yours.
+        statevector method in 64-bit precision. These are one machine&rsquo;s numbers; run the script to get yours.
       </p>
       <CodeBlock code={"pip install qiskit qiskit-aer matplotlib\npython benchmarks/benchmark.py --max-qubits 22"} />
       <p>

@@ -16,7 +16,10 @@
 //! ## Limits
 //!
 //! * Amplitudes are `f32` on the GPU (WGSL has no portable `f64`), so results
-//!   agree with the CPU backend to about 1e-6. They are converted to `f64` when read.
+//!   agree with the CPU backend to about 1e-5 for a few hundred gates; rounding
+//!   error grows with circuit depth. They are converted to `f64` when read.
+//! * Mid-circuit measurement renormalises by a probability summed in `f32`, so the
+//!   state's norm drifts slightly with each measurement within a shot.
 //! * Register size is capped by the device's maximum buffer size.
 //! * If no adapter is found, [`GpuQuantumState::new`] returns [`QsError::Gpu`];
 //!   use [`crate::best_backend`] to fall back to the CPU automatically.

@@ -49,7 +49,7 @@ fn parse_backend(name: &str) -> PyResult<BackendKind> {
 /// A quantum circuit on a fixed number of qubits, starting in |0...0>.
 ///
 /// Add gates with methods such as `h(0)` and `cx(0, 1)`, then call `run()`
-/// for measurement counts or `statevector()` for the exact final state.
+/// for measurement counts or `statevector()` for the final state, computed rather than sampled.
 /// Qubit 0 is the rightmost character of every bitstring.
 #[pyclass(name = "QuantumCircuit", module = "qsengine._core", subclass)]
 struct PyQuantumCircuit {
@@ -209,8 +209,9 @@ impl PyQuantumCircuit {
         Ok(counts.into_iter().map(|(i, c)| (format_bitstring(i, n), c)).collect())
     }
 
-    /// Exact final state as a NumPy array of 2**n complex128 amplitudes,
-    /// indexed by basis state.
+    /// Final state as a NumPy array of 2**n complex128 amplitudes, indexed by
+    /// basis state, computed rather than sampled. With backend="auto" the values
+    /// have 32-bit precision from 14 qubits when a GPU is used; pass "cpu" for 64-bit.
     #[pyo3(signature = (backend = "auto"))]
     fn statevector<'py>(&self, py: Python<'py>, backend: &str) -> PyResult<Bound<'py, PyArray1<Complex64>>> {
         let kind = parse_backend(backend)?;
@@ -220,8 +221,9 @@ impl PyQuantumCircuit {
         Ok(amps.into_pyarray(py))
     }
 
-    /// Exact probability of each of the 2**n basis states after the circuit,
-    /// as a NumPy float64 array.
+    /// Probability of each of the 2**n basis states after the circuit, computed
+    /// rather than sampled, as a NumPy float64 array. With backend="auto" the values
+    /// have 32-bit precision from 14 qubits when a GPU is used; pass "cpu" for 64-bit.
     #[pyo3(signature = (backend = "auto"))]
     fn probabilities<'py>(&self, py: Python<'py>, backend: &str) -> PyResult<Bound<'py, PyArray1<f64>>> {
         let kind = parse_backend(backend)?;

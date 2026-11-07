@@ -7,9 +7,9 @@ A circuit can give you four kinds of result. Each call simulates the whole circu
 | Method | Returns | Use it for |
 | --- | --- | --- |
 | `run(shots, seed, backend)` | `dict[str, int]` | Measurement counts, as a real device gives them |
-| `probabilities(backend)` | NumPy array of `float64` | The exact probability of each basis state |
-| `statevector(backend)` | NumPy array of `complex128` | The exact amplitudes |
-| `expectation(paulis, backend)` | `float`, or a NumPy array of `float64` | Exact expectation values of Pauli strings |
+| `probabilities(backend)` | NumPy array of `float64` | The probability of each basis state, computed, not sampled |
+| `statevector(backend)` | NumPy array of `complex128` | The amplitudes, computed, not sampled |
+| `expectation(paulis, backend)` | `float`, or a NumPy array of `float64` | Expectation values of Pauli strings, computed, not sampled |
 
 ## Drawing a circuit
 
@@ -97,7 +97,7 @@ A circuit that measures and then keeps going is in a different random state in e
 
 ## Expectation values
 
-`expectation()` gives the expectation value ⟨ψ|P|ψ⟩ of a Pauli string such as `"ZZI"`, one letter per qubit with qubit 0 on the right. It is exact, needs no shots, and is the building block of variational algorithms such as VQE and QAOA. Pass a list to get every term of a Hamiltonian from one simulation:
+`expectation()` gives the expectation value ⟨ψ|P|ψ⟩ of a Pauli string such as `"ZZI"`, one letter per qubit with qubit 0 on the right. It is computed from the state rather than sampled, needs no shots, and is the building block of variational algorithms such as VQE and QAOA. Pass a list to get every term of a Hamiltonian from one simulation:
 
 ```python
 import numpy as np
@@ -119,3 +119,5 @@ print(coeffs @ qc.expectation(["XX", "YY", "ZI"]))  # energy of 0.5 XX + 0.5 YY 
 ## Exact results
 
 `probabilities()` and `statevector()` return all 2ⁿ values, so they grow quickly: 20 qubits is about a million numbers. They come back as NumPy arrays, copied straight from Rust without a Python object per number, ready for vector maths. Use `run()` when you only need counts. See the [exact amplitudes example](/docs/examples/#ghz).
+
+"Exact" here means computed rather than sampled, not free of rounding. With the default `backend="auto"` these results are 64-bit below 14 qubits and 32-bit from 14 when a GPU is present; see [Precision](/docs/backends/#precision). Pass `backend="cpu"` for 64-bit results at every size.
