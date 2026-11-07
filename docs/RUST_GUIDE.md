@@ -615,7 +615,7 @@ wgpu is a Rust implementation of the WebGPU standard. It runs on Vulkan, DirectX
 
 WGSL is WebGPU's shader language, and `apply_gate.wgsl` is the GPU version of the CPU kernel. It looks like Rust: `let` bindings, `fn`, `struct`, `vec2<f32>`, `u32`. `@compute @workgroup_size(256)` marks the entry point, and each invocation gets its thread number from `@builtin(global_invocation_id)`. `var<storage, read_write>` is the state vector, and `var<uniform>` is the small read-only parameter block.
 
-WGSL has no portable 64-bit floats, so GPU amplitudes are `f32`. Results match the CPU to about 1e-6, which is fine for teaching and most simulation. Use `QuantumState` when you need full `f64` precision.
+WGSL has no portable 64-bit floats, so GPU amplitudes are `f32`. Results match the CPU to about 1e-5 for a few hundred gates, and the gap grows with circuit depth. That is fine for teaching and most simulation. Use `QuantumState` when you need full `f64` precision.
 
 ```wgsl
 @compute @workgroup_size(256)

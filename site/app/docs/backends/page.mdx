@@ -15,7 +15,7 @@ qc.run(shots=1000, backend="gpu")  # the GPU, or RuntimeError
 | <span className="sr">Property</span> | CPU | GPU | auto |
 | --- | --- | --- | --- |
 | How you ask for it | `backend="cpu"` | `backend="gpu"` | `backend="auto"` (the default) |
-| Precision | 64-bit floats | 32-bit floats, within 1e-5 of the CPU | 64-bit below 14 qubits, 32-bit from 14 |
+| Precision | 64-bit floats | 32-bit floats, within about 1e-5 of the CPU for a few hundred gates | 64-bit below 14 qubits, 32-bit from 14 |
 | Runs on | Every CPU core, through Rayon | Any NVIDIA, AMD, Intel or Apple GPU, through wgpu | Whichever is faster for the size |
 | Fastest for | Fewer than 14 qubits | 14 qubits and more | Both, by switching at 14 |
 | Largest register | 30 qubits (16 GiB) | What the GPU memory holds | That of the backend it picks |
@@ -29,7 +29,11 @@ Circuits that measure part-way switch later, at 20 qubits. Each mid-circuit meas
 
 ## Precision
 
-The CPU computes in 64-bit floats. GPUs generally lack fast 64-bit arithmetic, so the GPU backend uses 32-bit floats and agrees with the CPU to about 1e-5. Counts from `run()` are unaffected in practice; pass `backend="cpu"` when you compare amplitudes to many decimal places.
+The CPU computes in 64-bit floats. GPUs generally lack fast 64-bit arithmetic, so the GPU backend uses 32-bit floats. On the circuits in the test suite (up to 18 qubits and a few hundred gates) it agrees with the CPU to about 1e-5. Rounding error grows with the number of gates, so deep circuits drift further. Counts from `run()` are unaffected in practice; pass `backend="cpu"` when you compare amplitudes to many decimal places.
+
+Because `"auto"` switches at 14 qubits, `statevector()`, `probabilities()` and `expectation()` give 64-bit results below 14 qubits and 32-bit results from 14 on a machine with a GPU. If you compare results across register sizes, pass `backend="cpu"` so every size has the same precision.
+
+On the GPU, each mid-circuit measurement renormalises the state using a 32-bit sum. The error is small but adds up over many measurements in one shot, such as repeated syndrome rounds. Use `backend="cpu"` for those circuits when precision matters.
 
 ## Supported GPUs
 
