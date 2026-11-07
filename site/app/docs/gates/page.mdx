@@ -68,7 +68,7 @@ print(qc.probabilities())
 
 <Output printed="[0. 1.]" />
 
-A matrix that is not unitary raises `ValueError`, so a typo cannot quietly break the state.
+A matrix that is not unitary raises `ValueError`, so a typo cannot quietly break the state. A matrix that is unitary to within 1e-9, such as one computed with floating-point arithmetic, is accepted and replaced by the nearest exactly unitary matrix, so small rounding errors cannot add up over a long circuit.
 
 ## Rules every gate follows
 
