@@ -139,13 +139,15 @@ impl QuantumCircuit {
         Ok(())
     }
 
-    /// Record a user-supplied 2x2 `gate`, after checking it is unitary.
+    /// Record a user-supplied 2x2 `gate`, after checking it is unitary to within 1e-9.
+    /// The matrix recorded is the nearest exact unitary, so the tolerated rounding
+    /// error cannot change the state's norm and add up over a long circuit.
     /// [`add_gate`](Self::add_gate) trusts its matrix; this is the entry point for untrusted input.
     pub fn unitary(&mut self, controls: &[usize], target: usize, gate: Gate) -> Result<()> {
         if !gates::is_unitary(&gate, 1e-9) {
             return Err(QsError::NotUnitary);
         }
-        self.add_gate(controls, target, gate)
+        self.add_gate(controls, target, gates::nearest_unitary(&gate))
     }
 
     // Named gates. The first eleven match `QuantumBackend`; the rest are circuit-only.
@@ -482,6 +484,21 @@ mod tests {
         assert!(qc.set_condition(&[0], 1).is_err()); // nested
         assert!(qc.measure(0, 0).is_err()); // only gates can be conditional
         assert!(qc.instructions().is_empty());
+    }
+
+    #[test]
+    fn nearly_unitary_matrices_do_not_drift_the_norm() {
+        // H scaled by 1 + 1e-10 passes the 1e-9 check. Used as given, 2000 of them
+        // would grow the norm squared by about 4e-7; projected, only rounding remains.
+        // The CNOTs stop the gates fusing into one matrix.
+        let near_h = gates::H.map(|row| row.map(|z| z * (1.0 + 1e-10)));
+        let mut qc = QuantumCircuit::new(2).unwrap();
+        for _ in 0..2000 {
+            qc.unitary(&[], 0, near_h).unwrap();
+            qc.cx(0, 1).unwrap();
+        }
+        let norm_sq: f64 = qc.statevector(BackendKind::Cpu).unwrap().iter().map(|a| a.norm_sqr()).sum();
+        assert!((norm_sq - 1.0).abs() < 1e-10, "norm squared drifted to {norm_sq}");
     }
 
     #[test]

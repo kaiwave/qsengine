@@ -82,6 +82,29 @@ pub fn is_unitary(g: &Gate, tol: f64) -> bool {
     })
 }
 
+/// The unitary matrix closest to `g` (in any unitarily invariant norm): the unitary
+/// factor `W` of the polar decomposition `g = W·P`, i.e. `g·(g†g)^(-1/2)`.
+///
+/// For 2x2 matrices it has a closed form, `W = (g + s·adj(g)†) / tr(P)` with
+/// `s = det(g)/|det(g)|` and `tr(P) = sqrt(‖g‖F² + 2|det(g)|)`, so no iteration is needed.
+/// `g` must be invertible; callers pass matrices that already passed [`is_unitary`].
+pub fn nearest_unitary(g: &Gate) -> Gate {
+    let [[a, b], [c, d]] = *g;
+    let det = a * d - b * c;
+    let s = det / det.norm();
+    // adj(g) = [[d, -b], [-c, a]]; this is its conjugate transpose.
+    let adj_h = [[d.conj(), -c.conj()], [-b.conj(), a.conj()]];
+    let frobenius_sq: f64 = g.as_flattened().iter().map(|z| z.norm_sqr()).sum();
+    let trace_p = (frobenius_sq + 2.0 * det.norm()).sqrt();
+    let mut out = [[O; 2]; 2];
+    for r in 0..2 {
+        for k in 0..2 {
+            out[r][k] = (g[r][k] + s * adj_h[r][k]) / trace_p;
+        }
+    }
+    out
+}
+
 /// Rotation about the X axis of the Bloch sphere by `theta` radians.
 pub fn rx(theta: f64) -> Gate {
     let (s, co) = (theta / 2.0).sin_cos();
@@ -122,6 +145,28 @@ mod tests {
             assert!(is_unitary(&g, 1e-12), "not unitary: {g:?}");
         }
         assert!(!is_unitary(&[[I, I], [O, I]], 1e-9));
+    }
+
+    #[test]
+    fn nearest_unitary_is_the_polar_factor() {
+        let close = |a: &Gate, b: &Gate, tol: f64| (0..2).all(|r| (0..2).all(|k| (a[r][k] - b[r][k]).norm() < tol));
+        let scale = |g: &Gate, x: f64| g.map(|row| row.map(|z| z * x));
+        // Already unitary: unchanged (to rounding).
+        for g in [ID, X, Y, H, T, rx(0.3), u(0.4, -1.3, 2.2)] {
+            assert!(close(&nearest_unitary(&g), &g, 1e-15), "changed {g:?}");
+        }
+        // g = W·P with W unitary and P positive Hermitian gives back W, even far from unitary:
+        // a scalar P, and a non-scalar one that stretches one axis and shrinks the other.
+        let w = u(0.4, -1.3, 2.2);
+        assert!(close(&nearest_unitary(&scale(&w, 3.0)), &w, 1e-15));
+        let p = [[c(1.3, 0.0), c(0.1, 0.2)], [c(0.1, -0.2), c(0.7, 0.0)]];
+        assert!(close(&nearest_unitary(&matmul(&w, &p)), &w, 1e-14));
+        // The case it exists for: rounding-sized errors are removed, not just bounded.
+        let mut g = scale(&H, 1.0 + 1e-10);
+        g[0][1] += c(3e-10, -2e-10);
+        assert!(is_unitary(&g, 1e-9) && !is_unitary(&g, 1e-12));
+        let fixed = nearest_unitary(&g);
+        assert!(is_unitary(&fixed, 1e-15) && close(&fixed, &H, 1e-9));
     }
 
     #[test]

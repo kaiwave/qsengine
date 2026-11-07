@@ -59,7 +59,10 @@ class QuantumCircuit:
         target: int,
         controls: Sequence[int] = ...,
     ) -> None:
-        """Apply a 2x2 unitary to `target`; raises ValueError if it is not unitary."""
+        """Apply a 2x2 unitary to `target`; raises ValueError if it is not unitary within 1e-9.
+
+        A nearly unitary matrix is replaced by the nearest unitary matrix.
+        """
 
     # Measurement and reset
     def measure(self, qubit: int, clbit: int) -> None:

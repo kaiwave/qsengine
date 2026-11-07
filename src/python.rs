@@ -176,7 +176,8 @@ impl PyQuantumCircuit {
     fn swap(&mut self, qubit1: usize, qubit2: usize) -> PyResult<()> { Ok(self.inner.swap(qubit1, qubit2)?) }
 
     /// Apply any 2x2 unitary `matrix` (nested lists or a NumPy array) to `target`,
-    /// optionally only where every qubit in `controls` is |1>.
+    /// optionally only where every qubit in `controls` is |1>. A matrix within 1e-9
+    /// of unitary is accepted and replaced by the nearest unitary matrix.
     #[pyo3(signature = (matrix, target, controls = Vec::new()))]
     fn unitary(&mut self, matrix: Vec<Vec<Complex64>>, target: usize, controls: Vec<usize>) -> PyResult<()> {
         let gate = match matrix.as_slice() {
